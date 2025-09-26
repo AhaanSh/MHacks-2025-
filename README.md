@@ -1,5 +1,5 @@
 # MHacks-2025-
 
-created by Ahaan Shah <ahaansh@umich.edu>
-testing 
+Created by Ahaan Shah: <ahaansh@umich.edu>
+
 
