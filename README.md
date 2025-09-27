@@ -26,6 +26,6 @@ The frontend reads `VITE_API_BASE` from `.env` and calls `/health` on the backen
 1. Set up a virtual environment: python3 -m venv env  
 2. Activate the virtual environment: source env/bin/activate
 3. Install all requirements: pip install fastapi uvicorn pandas google-genai pydantic jinja2 openpyxl python-multipart
-4. Export the API Key: export GEMINI_API_KEY=AIzaSyCDSFDnRYO1zu09shleorcWssEfroGQbfw
+4. Export the API Key.
 5. Run the app: python api_app.py
 6. App URL: http://127.0.0.1:8000 
