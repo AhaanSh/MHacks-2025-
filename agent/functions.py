@@ -1,65 +1,87 @@
 # functions.py
 from uagents import Model
-import requests
+import pandas as pd
+import math
 
-class WeatherRequest(Model):
-    location : str
+# ---------- Config ----------
+CSV_PATH = "rentals.csv"   # default CSV file path
+TOP_K = 5                  # number of top matches to return
 
-class WeatherResponse(Model):
-    weather : str
+# ---------- Data Load ----------
+df = pd.read_csv(CSV_PATH)
+df.columns = [c.strip().lower() for c in df.columns]
 
-def get_weather(location: str):
-    """Return current weather for a location string (e.g., 'Paris, France')."""
-    if not location or not location.strip():
-        raise ValueError("location is required")
+# Ensure numeric types where needed
+for c in ["price","bedrooms","bathrooms","squarefootage","daysonmarket","hoa_fee","latitude","longitude"]:
+    if c in df.columns:
+        df[c] = pd.to_numeric(df[c], errors="coerce")
 
-    # 1) Geocode
-    geo_params = {"name": location, "count": 1, "language": "en", "format": "json"}
-    gr = requests.get(
-        "https://geocoding-api.open-meteo.com/v1/search",
-        params=geo_params,
-        timeout=60,
-    )
-    gr.raise_for_status()
-    g = gr.json()
-    if not g.get("results"):
-        raise RuntimeError(f"No geocoding match for: {location}")
+# ---------- Request / Response Models ----------
+class CriteriaRequest(Model):
+    budget_max: float
+    min_bedrooms: int = 0
+    min_bathrooms: int = 0
+    min_sqft: int = 0
+    max_hoa: float = None
+    city: str = None
+    state: str = None
+    zipCode: str = None
 
-    r0 = g["results"][0]
-    latitude = r0["latitude"]
-    longitude = r0["longitude"]
-    timezone = r0.get("timezone") or "auto"
-    display = ", ".join([v for v in [r0.get("name"), r0.get("admin1"), r0.get("country")] if v])
+class RecommendationResponse(Model):
+    results: list
 
-    # 2) Current weather
-    wx_params = {
-        "latitude": latitude,
-        "longitude": longitude,
-        "timezone": timezone,
-        "current": (
-            "temperature_2m,apparent_temperature,relative_humidity_2m,"
-            "weather_code,wind_speed_10m,wind_direction_10m,is_day,precipitation"
-        ),
-    }
-    wr = requests.get("https://api.open-meteo.com/v1/forecast", params=wx_params, timeout=60)
-    wr.raise_for_status()
-    data = wr.json()
+# ---------- Scoring ----------
+def score_row(row, q: CriteriaRequest):
+    score = 0.0
+    if q.budget_max and row.get("price") and row["price"] > q.budget_max:
+        return -1e9
+    if q.min_bedrooms and (row.get("bedrooms") or 0) < q.min_bedrooms:
+        return -1e9
+    if q.min_bathrooms and (row.get("bathrooms") or 0) < q.min_bathrooms:
+        return -1e9
+    if q.min_sqft and (row.get("squarefootage") or 0) < q.min_sqft:
+        return -1e9
+    if q.max_hoa is not None and row.get("hoa_fee") and row["hoa_fee"] > q.max_hoa:
+        return -1e9
 
-    current = data.get("current") or data.get("current_weather") or {}
-    temp = current.get("temperature_2m")
-    app = current.get("apparent_temperature")
-    wind = current.get("wind_speed_10m")
-    rh = current.get("relative_humidity_2m")
+    # soft preferences
+    if q.budget_max and row.get("price"):
+        gap = q.budget_max - row["price"]
+        score += 1000 * (1 - 1/(1+max(gap,0)/max(q.budget_max,1)))
+    if q.min_bedrooms and row.get("bedrooms"):
+        score += 50 * max(0, row["bedrooms"] - q.min_bedrooms)
+    if q.min_bathrooms and row.get("bathrooms"):
+        score += 40 * max(0, row["bathrooms"] - q.min_bathrooms)
+    if q.min_sqft and row.get("squarefootage"):
+        score += 0.02 * max(0, row["squarefootage"] - q.min_sqft)
+    if row.get("daysonmarket") and not math.isnan(row["daysonmarket"]):
+        score += 20 * (1/(1+row["daysonmarket"]))
+    if row.get("hoa_fee") and not math.isnan(row["hoa_fee"]):
+        score += 5 * (1/(1+row["hoa_fee"]))
+    return score
 
-    parts = [f"Weather for {display}"]
-    if temp is not None:
-        parts.append(f"temp {temp}°C")
-    if app is not None:
-        parts.append(f"feels like {app}°C")
-    if rh is not None:
-        parts.append(f"RH {rh}%")
-    if wind is not None:
-        parts.append(f"wind {wind} km/h")
+# ---------- Main Entry ----------
+def get_recommendations(criteria: CriteriaRequest):
+    """Return rental recommendations based on structured criteria."""
+    scored = []
+    for _, r in df.iterrows():
+        s = score_row(r.to_dict(), criteria)
+        if s > -1e8:
+            scored.append((s, r))
+    scored.sort(key=lambda x: x[0], reverse=True)
 
-    return {"weather": ", ".join(parts)}
-### Write code for the new module here and import it from agent.py.
+    results = [
+        {
+            "address": r.get("formattedaddress"),
+            "price": r.get("price"),
+            "beds": r.get("bedrooms"),
+            "baths": r.get("bathrooms"),
+            "sqft": r.get("squarefootage"),
+            "city": r.get("city"),
+            "state": r.get("state"),
+            "zip": r.get("zipcode"),
+            "score": round(float(s), 2),
+        }
+        for s, r in scored[:TOP_K]
+    ]
+    return {"results": results}

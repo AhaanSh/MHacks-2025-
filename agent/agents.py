@@ -1,5 +1,5 @@
 # agents.py
-from uagents import Agent, Context, Protocol
+from uagents import Agent, Context, Protocol, Model
 from uagents_core.contrib.protocols.chat import (
     ChatAcknowledgement,
     ChatMessage,
@@ -8,11 +8,10 @@ from uagents_core.contrib.protocols.chat import (
     StartSessionContent,
     EndSessionContent,
 )
-from functions import get_weather, WeatherRequest, WeatherResponse
+from functions import CriteriaRequest, RecommendationResponse, get_recommendations
 from datetime import datetime
 from uuid import uuid4
 from typing import Any, Dict
-from uagents import Model
 
 class StructuredOutputPrompt(Model):
     prompt: str
@@ -21,10 +20,11 @@ class StructuredOutputPrompt(Model):
 class StructuredOutputResponse(Model):
     output: Dict[str, Any]
 
-AI_AGENT_ADDRESS = "agent1qtlpfshtlcxekgrfcpmv7m9zpajuwu7d5jfyachvpa4u3dkt6k0uwwp2lct" # OpenAI ai agent address
+# Address of the LLM-backed AI agent (ASI1 or OpenAI-compatible)
+AI_AGENT_ADDRESS = "agent1qtlpfshtlcxekgrfcpmv7m9zpajuwu7d5jfyachvpa4u3dkt6k0uwwp2lct"
 
 ##############
-agent = Agent(name = "WeatherAgent", seed = "MhacksAhaanShah", port = 8000, mailbox = True) #ADD THESE 
+agent = Agent(name="RentalAgent", seed="MhacksAhaanShah", port=8001, endpoint=["https://localhost:8001"], mailbox=True)
 
 chat_proto = Protocol(spec=chat_protocol_spec)
 struct_output_client_proto = Protocol(
@@ -55,12 +55,13 @@ async def handle_message(ctx: Context, sender: str, msg: ChatMessage):
             ctx.logger.info(f"Got a start session message from {sender}")
             continue
         elif isinstance(item, TextContent):
-            ctx.logger.info(f"Got a message from {sender}: {item.text}")
+            ctx.logger.info(f"User query: {item.text}")
             ctx.storage.set(str(ctx.session), sender)
+            # Ask AI agent to extract structured criteria
             await ctx.send(
                 AI_AGENT_ADDRESS,
                 StructuredOutputPrompt(
-                    prompt=item.text, output_schema=WeatherRequest.schema()
+                    prompt=item.text, output_schema=CriteriaRequest.schema()
                 ),
             )
         else:
@@ -76,53 +77,56 @@ async def handle_ack(ctx: Context, sender: str, msg: ChatAcknowledgement):
 async def handle_structured_output_response(
     ctx: Context, sender: str, msg: StructuredOutputResponse
 ):
-    ctx.logger.info(f'Here is the message from structured output {msg.output}')
+    ctx.logger.info(f"Structured output received: {msg.output}")
     session_sender = ctx.storage.get(str(ctx.session))
     if session_sender is None:
-        ctx.logger.error(
-            "Discarding message because no session sender found in storage"
-        )
+        ctx.logger.error("No session sender found in storage")
         return
 
-    if "<UNKNOWN>" in str(msg.output):
-        await ctx.send(
-            session_sender,
-            create_text_chat(
-                "Sorry, I couldn't process your location request. Please try again later."
-            ),
-        )
-        return
-
-    # Extract location robustly from dict output
+    # Extract query from structured output
     try:
-        location = msg.output.get("location") if isinstance(msg.output, dict) else None
+        query = msg.output.get("query") if isinstance(msg.output, dict) else None
     except Exception:
-        location = None
-    ctx.logger.info(f'prompt{location}')
+        query = None
+    ctx.logger.info(f"Query extracted: {query}")
 
-    try:
-        if not location:
-            raise ValueError("No location provided in structured output")
-        weather = get_weather(location)
-        ctx.logger.info(str(weather))
-    except Exception as err:
-        ctx.logger.error(f"Error: {err}")
+    if not query:
         await ctx.send(
             session_sender,
-            create_text_chat(
-                "Sorry, I couldn't process your request. Please try again later."
-            ),
+            create_text_chat("Sorry, I couldn't process your request. Please try again."),
         )
         return
 
-    if "error" in weather:
-        await ctx.send(session_sender, create_text_chat(str(weather["error"])) )
+    try:
+        recs = get_recommendations(query)
+    except Exception as err:
+        ctx.logger.error(f"Error in recommendation: {err}")
+        await ctx.send(
+            session_sender,
+            create_text_chat("Something went wrong while finding recommendations."),
+        )
         return
 
-    reply = weather.get("weather") or f"Weather for {location}: (no data)"
-    chat_message = create_text_chat(reply)
+    results = recs.get("results", [])
+    if not results:
+        await ctx.send(
+            session_sender,
+            create_text_chat("No matches found. Try adjusting your criteria."),
+        )
+        return
 
-    await ctx.send(session_sender, chat_message)
+    # Format top results
+    lines = ["Here are the top matches:"]
+    for i, r in enumerate(results, 1):
+        addr = r.get("address") or f"{r.get('city','')}, {r.get('state','')}"
+        price = f"${int(r['price']):,}" if r.get("price") else "N/A"
+        bb = f"{r.get('beds') or '?'} bd / {r.get('baths') or '?'} ba"
+        sqft = f"{int(r['sqft']):,} sqft" if r.get("sqft") else ""
+        score = f" (score {r.get('score')})"
+        lines.append(f"{i}) {addr} — {price} — {bb} {sqft}{score}")
+
+    reply = "\n".join(lines)
+    await ctx.send(session_sender, create_text_chat(reply))
 
 agent.include(chat_proto, publish_manifest=True)
 agent.include(struct_output_client_proto, publish_manifest=True)
