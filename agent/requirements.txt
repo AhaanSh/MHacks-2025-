@@ -1,6 +1,0 @@
-uagents
-uagents-core
-fastapi
-uvicorn
-pandas
-openai>=1.0.0
