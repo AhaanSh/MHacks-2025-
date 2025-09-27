@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/style.css') }}"> 
+    <style>
+        /* Basic inline styling for a better look */
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 40px; background-color: #f0f4f8; }
+        .container { max-width: 800px; margin: auto; padding: 30px; background: white; border-radius: 12px; box-shadow: 0 10px 20px rgba(0,0,0,0.08); }
+        h1 { color: #007bff; border-bottom: 2px solid #e0e0e0; padding-bottom: 10px; }
+        form { display: flex; flex-direction: column; gap: 15px; margin-bottom: 25px; }
+        input[type="file"] { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+        button { padding: 12px 25px; background-color: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 1.1em; transition: background-color 0.2s; }
+        button:hover { background-color: #1e7e34; }
+        h2 { color: #333; }
+        .result-box { margin-top: 10px; padding: 15px; border: 1px solid #ccc; background: #fafafa; white-space: pre-wrap; font-family: monospace; border-radius: 4px; overflow-x: auto; }
+        .status-message { font-style: italic; color: #555; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>{{ title }}</h1>
+        <p>Upload a CSV or Excel file containing property data to extract key information using the **Gemini model**'s structured output capability.</p>
+        
+        <form id="uploadForm" enctype="multipart/form-data">
+            <input type="file" id="fileInput" name="file" accept=".csv, .xlsx, .xls" required>
+            <button type="submit">Analyze Data</button>
+        </form>
+
+        <h2>Extraction Results:</h2>
+        <div id="statusMessage" class="status-message">Ready to analyze.</div>
+        <pre class="result-box" id="results">{}</pre>
+
+    </div>
+
+    <script>
+        document.getElementById('uploadForm').addEventListener('submit', async function(event) {
+            event.preventDefault();
+            
+            const fileInput = document.getElementById('fileInput');
+            const resultsBox = document.getElementById('results');
+            const statusMessage = document.getElementById('statusMessage');
+            const endpoint = "{{ endpoint_url }}"; // Get the API URL from the context
+
+            if (fileInput.files.length === 0) {
+                statusMessage.textContent = "Please select a file.";
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            
+            statusMessage.textContent = "Analyzing data with Gemini... This may take several seconds.";
+            resultsBox.textContent = "{}"; // Clear previous results
+            
+            try {
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    body: formData 
+                    // Content-Type is handled automatically by the browser for FormData
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    statusMessage.textContent = "Analysis Complete. Extracted properties shown below:";
+                    // Display the extracted, formatted JSON data
+                    resultsBox.textContent = JSON.stringify(data, null, 2);
+                } else {
+                    statusMessage.textContent = `Error (${response.status}): Could not process file.`;
+                    // Display the full error response from the server
+                    resultsBox.textContent = JSON.stringify(data, null, 2);
+                }
+
+            } catch (error) {
+                statusMessage.textContent = "Network Error. Ensure the server is running.";
+                resultsBox.textContent = `Detailed Error: ${error}`;
+            }
+        });
+    </script>
+</body>
+</html>
