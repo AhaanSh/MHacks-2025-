@@ -61,10 +61,24 @@ async def understand_query(user_message: str) -> dict:
             "bedroom_operator": one of [">=", "<=", ">", "<", "==", null],
             "bathrooms": number or null,
             "bathroom_operator": one of [">=", "<=", ">", "<", "==", null],
-            "location": string or null
+            "city": string or null,
+            "state": string or null,
+            "location": string or null,
+            "property_type": string or null
           }},
           "urgency": one of ["low", "medium", "high"]
         }}
+
+        Extraction rules:
+        - "under 500k", "less than 500k" → budget_max
+        - "over 500k", "more than 500k" → budget_min
+        - "at least N" → operator ">="
+        - "at most N" or "less than or equal to N" → operator "<="
+        - "more than N" → operator ">"
+        - "less than N" → operator "<"
+        - "exactly N" → operator "=="
+        - If a user specifies both a city and a state (e.g. "Austin Texas"), split them: "Austin" → city, "Texas" → state. Also keep "Austin Texas" in location.
+        - "house", "apartment", "condo", "townhome", "duplex" → property_type
 
         User message: {user_message}
         """
