@@ -10,10 +10,13 @@ business_logic.py
 - Deduplicates by id (or address if id missing)
 - Clean formatted output (no 'nan'), agent -> office fallback
 - City/state parsing + normalization (state names -> abbreviations)
+- Enhanced Favorites support (per-user add/remove/list with natural language)
+- Fixed phone number formatting (removes .0)
+- Fixed remove favorites functionality
 """
 import os
 import re
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 
 import pandas as pd
 
@@ -27,6 +30,9 @@ except Exception as e:
 
 # --- In-memory per-user context (resets when process restarts) ---
 user_context: Dict[str, Dict[str, Any]] = {}
+user_favorites: Dict[str, List[str]] = {}  # favorites store per user
+user_last_search_results: Dict[str, List[Dict[str, Any]]] = {}  # track last search results per user
+user_last_favorites_display: Dict[str, List[Dict[str, Any]]] = {}  # track last favorites display
 
 # --- State map for name -> abbreviation ---
 STATE_MAP = {
@@ -48,7 +54,6 @@ STATE_MAP = {
 
 # ---------------- Helpers ----------------
 def parse_number(value: Any) -> Optional[float]:
-    """Parse numbers like '500000', '$500k', '1M', '2.5', 3 -> returns numeric or None."""
     if value is None:
         return None
     if isinstance(value, (int, float)):
@@ -74,7 +79,6 @@ def parse_number(value: Any) -> Optional[float]:
 
 
 def normalize_operator(op: Optional[str]) -> Optional[str]:
-    """Normalize various operator strings to one of: '>=', '<=', '>', '<', '==' or None."""
     if op is None:
         return None
     op_s = str(op).strip().lower()
@@ -96,7 +100,6 @@ def normalize_operator(op: Optional[str]) -> Optional[str]:
 
 
 def apply_operator_filter(df: pd.DataFrame, col: str, value: Optional[float], operator: Optional[str]) -> pd.DataFrame:
-    """Apply numeric operator filter safely. If operator is None => >= by default."""
     if value is None or col not in df.columns:
         return df
     op = normalize_operator(operator) or ">="
@@ -117,7 +120,6 @@ def apply_operator_filter(df: pd.DataFrame, col: str, value: Optional[float], op
 
 
 def pretty_price(val: Any) -> str:
-    """Return nicely formatted price or raw fallback."""
     if val is None or (isinstance(val, float) and pd.isna(val)):
         return ""
     try:
@@ -128,7 +130,6 @@ def pretty_price(val: Any) -> str:
 
 
 def clean_value(val: Any) -> Optional[str]:
-    """Return None when NaN/empty, otherwise stringified value."""
     if val is None:
         return None
     if isinstance(val, float) and pd.isna(val):
@@ -140,15 +141,15 @@ def clean_value(val: Any) -> Optional[str]:
 
 
 def build_contact_info(row: Dict[str, Any]) -> Optional[str]:
-    """
-    Prefer agent info, fallback to office info. Return joined string or None.
-    Expected fields in CSV: agent_name, agent_phone, agent_email, office_name, office_phone, office_email
-    """
     parts = []
     if row.get("agent_name"):
         parts.append(str(row["agent_name"]).strip())
     if row.get("agent_phone") and str(row["agent_phone"]).lower() != "nan":
-        parts.append(str(row["agent_phone"]).strip())
+        phone = str(row["agent_phone"]).strip()
+        # Remove .0 from phone numbers
+        if phone.endswith('.0'):
+            phone = phone[:-2]
+        parts.append(phone)
     if row.get("agent_email") and str(row["agent_email"]).lower() != "nan":
         parts.append(str(row["agent_email"]).strip())
 
@@ -159,7 +160,11 @@ def build_contact_info(row: Dict[str, Any]) -> Optional[str]:
     if row.get("office_name"):
         office_parts.append(str(row["office_name"]).strip())
     if row.get("office_phone") and str(row["office_phone"]).lower() != "nan":
-        office_parts.append(str(row["office_phone"]).strip())
+        phone = str(row["office_phone"]).strip()
+        # Remove .0 from phone numbers
+        if phone.endswith('.0'):
+            phone = phone[:-2]
+        office_parts.append(phone)
     if row.get("office_email") and str(row["office_email"]).lower() != "nan":
         office_parts.append(str(row["office_email"]).strip())
 
@@ -170,7 +175,6 @@ def build_contact_info(row: Dict[str, Any]) -> Optional[str]:
 
 
 def summarize_filters(filters: Dict[str, Any]) -> str:
-    """Return a human-friendly one-line description of active filters."""
     pieces = []
     if not filters:
         return "No active filters"
@@ -196,11 +200,9 @@ def summarize_filters(filters: Dict[str, Any]) -> str:
 
 
 def _is_reset_command_text(text: str) -> bool:
-    """Return True if text contains a reset/clear instruction."""
     if not text:
         return False
     t = text.lower()
-    # Multi-word phrases first to reduce false positives
     phrases = [
         "reset filters", "clear filters", "reset search", "clear search",
         "start over", "clear all filters", "clear all", "reset all filters"
@@ -211,41 +213,308 @@ def _is_reset_command_text(text: str) -> bool:
     return False
 
 
-# ---------------- Main handlers ----------------
+# ---------------- Enhanced Favorites ----------------
+def add_favorite(sender: str, property_id: str) -> str:
+    """Add a property to user's favorites"""
+    favs = user_favorites.setdefault(sender, [])
+    if property_id not in favs:
+        favs.append(property_id)
+        return f"Property {property_id} added to your favorites."
+    return f"Property {property_id} is already in your favorites."
+
+
+def remove_favorite(sender: str, property_id: str) -> str:
+    """Remove a property from user's favorites"""
+    favs = user_favorites.get(sender, [])
+    if property_id in favs:
+        favs.remove(property_id)
+        return f"Property {property_id} removed from your favorites."
+    return f"Property {property_id} was not in your favorites."
+
+
+def list_favorites(sender: str) -> str:
+    """List all favorite properties for a user"""
+    favs = user_favorites.get(sender, [])
+    if not favs:
+        return "You don't have any favorite properties yet. When you search for properties, you can add them to favorites by saying 'favorite 1', 'favorite 2', etc."
+
+    df = rentals_df.copy()
+    
+    # Try to find matching properties using the actual favorite IDs
+    matched_properties = []
+    
+    for fav_id in favs:
+        # Strategy 1: Match by exact ID (removing quotes)
+        if "id" in df.columns:
+            df_clean = df.copy()
+            df_clean["id_clean"] = df_clean["id"].astype(str).str.strip('"')
+            id_matches = df_clean[df_clean["id_clean"] == str(fav_id).strip('"')]
+            if not id_matches.empty:
+                matched_properties.extend(id_matches.to_dict('records'))
+                continue
+        
+        # Strategy 2: Match by formattedAddress (exact match)
+        if "formattedAddress" in df.columns:
+            addr_matches = df[df["formattedAddress"].astype(str) == str(fav_id)]
+            if not addr_matches.empty:
+                matched_properties.extend(addr_matches.to_dict('records'))
+                continue
+        
+        # Strategy 3: Match by normalized address (spaces vs hyphens)
+        if "formattedAddress" in df.columns:
+            # Try both directions: fav_id might have hyphens, address might have spaces
+            normalized_fav = str(fav_id).replace(' ', '-')
+            normalized_addresses = df["formattedAddress"].astype(str).str.replace(' ', '-')
+            normalized_matches = df[normalized_addresses == normalized_fav]
+            if not normalized_matches.empty:
+                matched_properties.extend(normalized_matches.to_dict('records'))
+                continue
+            
+            # Also try the reverse: fav_id might have spaces, address might have hyphens
+            reverse_fav = str(fav_id).replace('-', ' ')
+            reverse_matches = df[df["formattedAddress"].astype(str) == reverse_fav]
+            if not reverse_matches.empty:
+                matched_properties.extend(reverse_matches.to_dict('records'))
+                continue
+    
+    # Remove duplicates by ID
+    unique_properties = []
+    seen_ids = set()
+    for prop in matched_properties:
+        prop_id = prop.get('id') or prop.get('formattedAddress')
+        if prop_id and prop_id not in seen_ids:
+            seen_ids.add(prop_id)
+            unique_properties.append(prop)
+
+    if not unique_properties:
+        return f"Your favorites list contains {len(favs)} items but none could be found in the current property data. Your favorites: {favs}"
+
+    # Store the displayed favorites for removal by position
+    user_last_favorites_display[sender] = unique_properties
+    
+    # Create a DataFrame for formatting
+    matched_df = pd.DataFrame(unique_properties)
+    return _format_results(matched_df, {}, sender, prefix="Here are your favorite properties", show_favorite_option=False)
+
+def handle_add_to_favorites(sender: str, message: str) -> str:
+    """Enhanced add to favorites with better property ID extraction"""
+    # Look for simple number patterns first (favorite 1, favorite 2, etc.)
+    simple_match = re.search(r"favorite\s+(?:property\s+)?(\d+)", message.lower())
+    if simple_match:
+        property_number = int(simple_match.group(1))
+        # Get the actual property from recent search results
+        return add_favorite_by_position(sender, property_number)
+    
+    # Look for other property ID patterns
+    id_patterns = [
+        r"favorite\s+property\s+([^\s,]+)",  # "favorite property 3"
+        r"favorite\s+([^\s,]+)",             # "favorite 12345"
+        r"add\s+([^\s,]+)\s+to",             # "add 12345 to favorites"
+        r"property\s+([^\s,]+)",             # "property 12345" 
+        r"id\s*:?\s*([^\s,]+)",              # "id: 12345" or "id 12345"
+        r"#([^\s,]+)",                       # "#12345"
+        r"\[([^\]]+)\]",                     # "[12345]" - matches our bracket format
+    ]
+    
+    for pattern in id_patterns:
+        match = re.search(pattern, message.lower())
+        if match:
+            property_id = match.group(1).strip()
+            return add_favorite(sender, property_id)
+    
+    return "Please specify which property you'd like to add to favorites. You can say 'favorite 1', 'favorite 2', etc. using the property number from your search results."
+
+
+def add_favorite_by_position(sender: str, position: int) -> str:
+    """Add favorite by position number from last search results"""
+    if sender not in user_last_search_results:
+        return "Please do a property search first to see available options."
+    
+    results = user_last_search_results[sender]
+    
+    if position < 1 or position > len(results):
+        return f"Property {position} not found. Please choose a number between 1 and {len(results)}."
+    
+    try:
+        property_row = results[position - 1]  # Convert to 0-based index
+        property_id = property_row.get("id")
+        if property_id is None or pd.isna(property_id):
+            # Use address as fallback ID
+            address = property_row.get("formattedAddress") or property_row.get("addressLine1") or f"property_{position}"
+            property_id = address
+        else:
+            property_id = str(property_id).strip('"')
+        
+        return add_favorite(sender, property_id)
+    except IndexError:
+        return f"Property {position} not found."
+
+
+def handle_remove_from_favorites(sender: str, message: str) -> str:
+    """Enhanced remove from favorites with better property ID extraction"""
+    # Look for simple number patterns first (remove favorite 1, unfavorite 2, etc.)
+    simple_match = re.search(r"(?:remove\s+favorite|unfavorite|delete\s+favorite)\s+(\d+)", message.lower())
+    if simple_match:
+        property_number = int(simple_match.group(1))
+        # Get the actual property from recent favorites display or search results
+        return remove_favorite_by_position(sender, property_number)
+    
+    # Look for other property ID patterns
+    id_patterns = [
+        r"remove\s+favorite\s+([^\s,]+)",    # "remove favorite 12345"
+        r"unfavorite\s+([^\s,]+)",           # "unfavorite 12345"
+        r"delete\s+([^\s,]+)",               # "delete 12345"
+        r"property\s+([^\s,]+)",             # "property 12345"
+        r"id\s*:?\s*([^\s,]+)",              # "id: 12345"
+        r"#([^\s,]+)",                       # "#12345"
+        r"\[([^\]]+)\]",                     # "[12345]"
+    ]
+    
+    for pattern in id_patterns:
+        match = re.search(pattern, message.lower())
+        if match:
+            property_id = match.group(1)
+            return remove_favorite(sender, property_id)
+    
+    return "Please specify which property you'd like to remove from favorites. You can say 'remove favorite 1', 'unfavorite 2', etc. using the property number from your favorites list."
+
+
+def remove_favorite_by_position(sender: str, position: int) -> str:
+    """Remove favorite by position number from last favorites display or search results"""
+    print(f"DEBUG: remove_favorite_by_position called for sender={sender}, position={position}")
+    
+    # First try to remove from favorites display (if user just viewed favorites)
+    if sender in user_last_favorites_display:
+        favorites_results = user_last_favorites_display[sender]
+        print(f"DEBUG: Found {len(favorites_results)} favorites in display")
+        if 1 <= position <= len(favorites_results):
+            property_row = favorites_results[position - 1]
+            property_id = property_row.get("id") or property_row.get("formattedAddress")
+            print(f"DEBUG: Removing property at position {position}: {property_id}")
+            
+            if property_id is None or pd.isna(property_id):
+                # Use address as fallback ID
+                address = property_row.get("formattedAddress") or property_row.get("addressLine1") or f"property_{position}"
+                property_id = address
+            
+            property_id = str(property_id).strip('"')
+            print(f"DEBUG: Final property ID to remove: {property_id}")
+            
+            # Get current favorites for debugging
+            current_favs = user_favorites.get(sender, [])
+            print(f"DEBUG: Current favorites before removal: {current_favs}")
+            
+            result = remove_favorite(sender, property_id)
+            print(f"DEBUG: Removal result: {result}")
+            return result
+    
+    # Fallback to search results
+    if sender in user_last_search_results:
+        search_results = user_last_search_results[sender]
+        print(f"DEBUG: Falling back to search results, found {len(search_results)} properties")
+        if 1 <= position <= len(search_results):
+            property_row = search_results[position - 1]
+            property_id = property_row.get("id") or property_row.get("formattedAddress")
+            print(f"DEBUG: Removing search result at position {position}: {property_id}")
+            
+            if property_id is None or pd.isna(property_id):
+                address = property_row.get("formattedAddress") or property_row.get("addressLine1") or f"property_{position}"
+                property_id = address
+            
+            property_id = str(property_id).strip('"')
+            print(f"DEBUG: Final property ID to remove: {property_id}")
+            
+            result = remove_favorite(sender, property_id)
+            print(f"DEBUG: Removal result: {result}")
+            return result
+    
+    return f"Property {position} not found. Please view your favorites first or do a property search."
+
+# ---------------- Main handler ----------------
+# ---------------- Main handler ----------------
 def handle_user_query(sender: str, understood_query: Dict[str, Any]) -> str:
-    """
-    Entry point. Maintains per-user context and merges incoming filter info.
-    Detects reset commands and clears context for the sender when requested.
-    """
     original_message = understood_query.get("original_query", "") or ""
     llm_analysis = understood_query.get("llm_analysis", {}) or {}
 
-    # initialize context for sender if missing
+    # init context/favorites
     if sender not in user_context:
         user_context[sender] = {}
+    if sender not in user_favorites:
+        user_favorites[sender] = []
 
-    # 1) Reset detection from plain text (fast)
+    lower_msg = original_message.lower()
+
+    # --- FIXED ORDER ---
+
+    # Remove from favorites - must check BEFORE add
+    if any(phrase in lower_msg for phrase in [
+        "remove from favorites", "unfavorite", "delete from favorites",
+        "remove this favorite", "take off favorites", "remove favorite"
+    ]):
+        return handle_remove_from_favorites(sender, original_message)
+
+    # Add to favorites
+    if any(phrase in lower_msg for phrase in [
+        "add to favorites", "favorite this", "save this property", 
+        "add this to my favorites", "make this a favorite", "favorite "
+    ]):
+        return handle_add_to_favorites(sender, original_message)
+
+    # Show favorites
+    if any(phrase in lower_msg for phrase in [
+        "show favorites", "show my favorites", "list favorites", 
+        "my favorite properties", "what are my favorites", "favorites list",
+        "view favorites", "see my favorites"
+    ]):
+        return list_favorites(sender)
+
+    # Handle LLM-detected favorites intent
+    if isinstance(llm_analysis, dict) and llm_analysis.get("intent") == "favorites":
+        key_info = llm_analysis.get("key_info", {}) or {}
+        favorites_action = key_info.get("favorites_action")
+        property_id = key_info.get("property_id")
+
+        if favorites_action == "show":
+            return list_favorites(sender)
+        elif favorites_action == "add":
+            if property_id:
+                if str(property_id).isdigit():
+                    return add_favorite_by_position(sender, int(property_id))
+                else:
+                    return add_favorite(sender, property_id)
+            else:
+                return handle_add_to_favorites(sender, original_message)
+        elif favorites_action == "remove":
+            if property_id:
+                if str(property_id).isdigit():
+                    return remove_favorite_by_position(sender, int(property_id))
+                else:
+                    return remove_favorite(sender, property_id)
+            else:
+                return handle_remove_from_favorites(sender, original_message)
+        else:
+            return list_favorites(sender)
+
+    # Reset detection...
+
     if _is_reset_command_text(original_message):
         user_context[sender] = {}
         return "Your search filters have been reset."
 
-    # 2) Reset detection from LLM analysis if it explicitly signals reset
     if isinstance(llm_analysis, dict):
         if llm_analysis.get("intent") == "reset":
             user_context[sender] = {}
             return "Your search filters have been reset."
-        # also accept key_info.reset = true (if your prompt includes such a flag)
         k = llm_analysis.get("key_info", {})
         if isinstance(k, dict) and k.get("reset") in (True, "true", "yes", 1):
             user_context[sender] = {}
             return "Your search filters have been reset."
 
-    # 3) If the LLM indicates a property_search, merge and run it
+    # Property search
     if isinstance(llm_analysis, dict) and llm_analysis.get("intent") == "property_search":
         prev = user_context.get(sender, {}) or {}
         incoming = llm_analysis.get("key_info", {}) or {}
 
-        # Parse numeric and operator values
         parsed_incoming: Dict[str, Any] = {}
         if "budget_min" in incoming:
             parsed_incoming["budget_min"] = parse_number(incoming.get("budget_min"))
@@ -255,14 +524,13 @@ def handle_user_query(sender: str, understood_query: Dict[str, Any]) -> str:
             parsed_incoming["bedrooms"] = parse_number(incoming.get("bedrooms"))
         if "bathrooms" in incoming:
             parsed_incoming["bathrooms"] = parse_number(incoming.get("bathrooms"))
-        if "bedroom_operator" in incoming and incoming.get("bedroom_operator") is not None:
+        if "bedroom_operator" in incoming:
             parsed_incoming["bedroom_operator"] = normalize_operator(incoming.get("bedroom_operator"))
-        if "bathroom_operator" in incoming and incoming.get("bathroom_operator") is not None:
+        if "bathroom_operator" in incoming:
             parsed_incoming["bathroom_operator"] = normalize_operator(incoming.get("bathroom_operator"))
         if "city" in incoming and incoming.get("city"):
             parsed_incoming["city"] = incoming.get("city")
         if "state" in incoming and incoming.get("state"):
-            # normalize to abbreviation if possible (LLM may output full name)
             st = str(incoming.get("state")).strip()
             st_abbr = STATE_MAP.get(st.lower(), None)
             parsed_incoming["state"] = st_abbr or st.upper()
@@ -271,19 +539,15 @@ def handle_user_query(sender: str, understood_query: Dict[str, Any]) -> str:
         if "property_type" in incoming and incoming.get("property_type"):
             parsed_incoming["property_type"] = incoming.get("property_type")
 
-        # Merge into previous context (overwrite only with non-None incoming)
         merged = prev.copy()
         for k, v in parsed_incoming.items():
             if v is not None:
                 merged[k] = v
 
-        # Save context
         user_context[sender] = merged
-
-        # Run rental query with merged filters
         return _run_rental_query(sender, merged)
 
-    # 4) Fallback simple intent handling (pricing/book/ support etc.)
+    # Other handlers
     msg_lower = original_message.lower()
     if any(k in msg_lower for k in ["price", "cost", "how much"]):
         return handle_pricing_query(original_message, llm_analysis)
@@ -297,52 +561,40 @@ def handle_user_query(sender: str, understood_query: Dict[str, Any]) -> str:
     return handle_general_query(original_message, llm_analysis)
 
 
+# ---------------- Rentals filtering ----------------
 def _run_rental_query(sender: str, filters: Dict[str, Any]) -> str:
-    """
-    Perform DataFrame filtering using 'filters' that came from or are stored in context.
-    """
     df = rentals_df.copy()
 
-    # ensure numeric columns are numeric
     for c in ["price", "bedrooms", "bathrooms"]:
         if c in df.columns:
             df[c] = pd.to_numeric(df[c], errors="coerce")
 
-    # Drop rows missing required values for active filters
     if filters.get("budget_min") is not None or filters.get("budget_max") is not None:
         if "price" in df.columns:
             df = df.dropna(subset=["price"])
-    if filters.get("bedrooms") is not None:
-        if "bedrooms" in df.columns:
-            df = df.dropna(subset=["bedrooms"])
-    if filters.get("bathrooms") is not None:
-        if "bathrooms" in df.columns:
-            df = df.dropna(subset=["bathrooms"])
+    if filters.get("bedrooms") is not None and "bedrooms" in df.columns:
+        df = df.dropna(subset=["bedrooms"])
+    if filters.get("bathrooms") is not None and "bathrooms" in df.columns:
+        df = df.dropna(subset=["bathrooms"])
 
-    # Apply budget
-    if filters.get("budget_min") is not None and "price" in df.columns:
+    if filters.get("budget_min") is not None:
         df = df[df["price"] >= float(filters["budget_min"])]
-    if filters.get("budget_max") is not None and "price" in df.columns:
+    if filters.get("budget_max") is not None:
         df = df[df["price"] <= float(filters["budget_max"])]
 
-    # Apply bedroom/bathroom operator filters
     df = apply_operator_filter(df, "bedrooms", filters.get("bedrooms"), filters.get("bedroom_operator"))
     df = apply_operator_filter(df, "bathrooms", filters.get("bathrooms"), filters.get("bathroom_operator"))
 
-    # propertyType filter
     if filters.get("property_type") and "propertyType" in df.columns:
         df = df[df["propertyType"].astype(str).str.contains(str(filters["property_type"]), case=False, na=False)]
 
-    # Location: prefer explicit city/state fields if present in context
     if filters.get("city") and "city" in df.columns:
         df = df[df["city"].astype(str).str.contains(str(filters["city"]), case=False, na=False)]
 
     if filters.get("state") and "state" in df.columns:
-        # State in context should already be abbreviation from merging stage
         desired_state = str(filters["state"]).upper()
         df = df[df["state"].astype(str).str.upper() == desired_state]
 
-    # Fallback: tokenized location matching across city/state/formattedAddress
     if (not filters.get("city") and not filters.get("state")) and filters.get("location"):
         loc = str(filters["location"])
         tokens = [t.strip() for t in re.split(r"[, ]+", loc) if t.strip()]
@@ -359,31 +611,39 @@ def _run_rental_query(sender: str, filters: Dict[str, Any]) -> str:
             if cond is not None:
                 df = df[cond]
 
-    # If nothing left
     if df.empty:
-        return "Sorry, I couldn’t find any properties matching your request. (Active filters: " + summarize_filters(filters) + ")"
+        return "Sorry, I couldn't find any properties matching your request. (Active filters: " + summarize_filters(filters) + ")"
 
-    # Deduplicate by id or address
     if "id" in df.columns:
         df = df.drop_duplicates(subset=["id"])
     elif "formattedAddress" in df.columns:
         df = df.drop_duplicates(subset=["formattedAddress"])
 
-    # Sort by price (if available)
     if "price" in df.columns:
         df = df.sort_values(by="price", ascending=True)
 
-    # Format top results
-    results = df.head(5).to_dict(orient="records")
-    lines = [f"Here are some properties that match your request (Active filters: {summarize_filters(filters)}):\n"]
+    return _format_results(df, filters, sender)
 
-    for row in results:
+
+def _format_results(df: pd.DataFrame, filters: Dict[str, Any], sender: str, prefix: str = "Here are some properties that match your request", show_favorite_option: bool = True) -> str:
+    """Enhanced results formatting with property IDs for easier favoriting"""
+    results = df.head(5).to_dict(orient="records")
+    
+    # Store the results for this user
+    user_last_search_results[sender] = results
+    
+    if show_favorite_option:
+        lines = [f"{prefix} (Active filters: {summarize_filters(filters)}):\n"]
+    else:
+        lines = [f"{prefix}:\n"]
+
+    for i, row in enumerate(results, 1):
         address = clean_value(row.get("formattedAddress")) or row.get("addressLine1") or row.get("city") or "Unknown"
         price_val = row.get("price")
         bedrooms_val = row.get("bedrooms")
         bathrooms_val = row.get("bathrooms")
-
-        parts = [f"- {address}"]
+        
+        parts = [f"- Property {i}: {address}"]
         if pd.notna(price_val):
             parts.append(pretty_price(price_val))
 
@@ -405,14 +665,22 @@ def _run_rental_query(sender: str, filters: Dict[str, Any]) -> str:
         if contact:
             parts.append("| Contact: " + contact)
 
+        # Add favoriting instruction with simple number
+        if show_favorite_option:
+            parts.append(f"| Say 'favorite {i}' to save")
+
         lines.append(" ".join(parts))
+
+    # Add helpful instructions at the bottom
+    if show_favorite_option:
+        lines.append(f"\nTip: Use 'favorite 1', 'favorite 2', etc. to add properties to favorites, then 'show favorites' to view them later")
 
     return "\n".join(lines)
 
 
-# --- Other simple handlers (unchanged) ---
+# --- Other simple handlers ---
 def handle_pricing_query(original_message: str, llm_analysis: Dict[str, Any]) -> str:
-    return "For pricing information, I can connect you with our sales team or you can visit our pricing page. What specific product are you interested in?"
+    return "For pricing information, I can connect you with our sales team or you can visit our pricing page."
 
 
 def handle_booking_query(original_message: str, llm_analysis: Dict[str, Any]) -> str:
@@ -420,7 +688,7 @@ def handle_booking_query(original_message: str, llm_analysis: Dict[str, Any]) ->
 
 
 def handle_support_query(original_message: str, llm_analysis: Dict[str, Any]) -> str:
-    return "I'm sorry you're experiencing an issue. Let me help you with that. Can you provide more details about what's happening?"
+    return "I'm sorry you're experiencing an issue. Can you provide more details about what's happening?"
 
 
 def handle_urgent_query(original_message: str, llm_analysis: Dict[str, Any]) -> str:
@@ -428,7 +696,7 @@ def handle_urgent_query(original_message: str, llm_analysis: Dict[str, Any]) -> 
 
 
 def handle_general_query(original_message: str, llm_analysis: Dict[str, Any]) -> str:
-    return "I'm here to help! Could you provide a bit more detail about what you're looking for?"
+    return "I'm here to help! Could you provide a bit more detail about what you're looking for? You can search for properties, view your favorites, or ask me anything else."
 
 
 def custom_function_example(data: Any):

@@ -52,7 +52,7 @@ async def understand_query(user_message: str) -> dict:
 
         The JSON must contain exactly this shape:
         {{
-          "intent": one of ["property_search", "pricing", "booking", "support", "general"],
+          "intent": one of ["property_search", "pricing", "booking", "support", "general", "favorites", "reset"],
           "summary": "brief summary of request",
           "key_info": {{
             "budget_min": number or null,
@@ -64,12 +64,26 @@ async def understand_query(user_message: str) -> dict:
             "city": string or null,
             "state": string or null,
             "location": string or null,
-            "property_type": string or null
+            "property_type": string or null,
+            "favorites_action": one of ["show", "add", "remove", null],
+            "property_id": string or null,
+            "reset": boolean or null
           }},
           "urgency": one of ["low", "medium", "high"]
         }}
 
-        Extraction rules:
+        Intent Classification Rules:
+        - "favorites" intent for: "show favorites", "add to favorites", "remove from favorites", etc.
+        - "reset" intent for: "reset filters", "clear search", "start over", etc.
+        - "property_search" intent for actual property searches with criteria
+
+        Favorites Action Rules:
+        - "show" for: "show favorites", "list my favorites", "what are my favorites"
+        - "add" for: "add to favorites", "favorite this", "save this property"
+        - "remove" intent for: "remove from favorites", "unfavorite", "delete favorite"
+        - "remove favorites" intent for: "remove from favorites", "unfavorite" 
+
+        Property Search Rules:
         - "under 500k", "less than 500k" → budget_max
         - "over 500k", "more than 500k" → budget_min
         - "at least N" → operator ">="
@@ -77,8 +91,11 @@ async def understand_query(user_message: str) -> dict:
         - "more than N" → operator ">"
         - "less than N" → operator "<"
         - "exactly N" → operator "=="
-        - If a user specifies both a city and a state (e.g. "Austin Texas"), split them: "Austin" → city, "Texas" → state. Also keep "Austin Texas" in location.
+        - If a user specifies both city and state (e.g. "Austin Texas"), split them: "Austin" → city, "Texas" → state
         - "house", "apartment", "condo", "townhome", "duplex" → property_type
+
+        Reset Detection:
+        - "reset filters", "clear search", "start over" → set reset: true
 
         User message: {user_message}
         """
@@ -109,7 +126,6 @@ async def understand_query(user_message: str) -> dict:
             "llm_analysis": {"error": str(e)},
             "timestamp": datetime.now(timezone.utc)
         }
-
 
 @chat_proto.on_message(ChatMessage)
 async def handle_message(ctx: Context, sender: str, msg: ChatMessage):
