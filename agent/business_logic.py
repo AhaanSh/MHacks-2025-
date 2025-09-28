@@ -77,6 +77,125 @@ def parse_number(value: Any) -> Optional[float]:
     except Exception:
         return None
 
+def handle_property_action(sender: str, action_info: Dict[str, Any]) -> str:
+    if sender not in user_last_search_results:
+        return "Please run a property search first to get a list of properties."
+
+    results = user_last_search_results[sender]
+
+    action = action_info.get("action")
+    prop_num = action_info.get("property_number")
+    field = action_info.get("field")
+    order = action_info.get("order")
+    rental_mode = action_info.get("rental_mode", False)
+
+    # Contact info lookup
+    if action == "get_contact":
+        if not prop_num or prop_num < 1 or prop_num > len(results):
+            return f"Property {prop_num} not found."
+        row = results[prop_num - 1]
+        contact = build_contact_info(row)
+        return f"Contact info for property {prop_num}: {contact or 'Not available'}"
+
+    # Sorting
+    if action == "sort":
+        if not field:
+            return "Please specify a field to sort by (e.g., price, bedrooms, bathrooms)."
+        df = pd.DataFrame(results)
+        if field not in df.columns:
+            return f"I can't sort by {field}. Available fields: {list(df.columns)}"
+        df_sorted = df.sort_values(by=field, ascending=(order != "desc"))
+        return _format_results(df_sorted, {}, sender, prefix=f"Properties sorted by {field} ({order or 'asc'})", rental_mode=rental_mode)
+
+    # Comparison
+    if action == "compare":
+        if not field:
+            return "Please specify what to compare (e.g., price, bedrooms, bathrooms)."
+        if len(results) < 2:
+            return "You need at least 2 properties in your results to compare."
+        row1, row2 = results[0], results[1]
+        val1, val2 = row1.get(field), row2.get(field)
+        return f"Property 1 has {val1} {field}, Property 2 has {val2} {field}."
+
+    # Details
+    if action == "details":
+        if not prop_num or prop_num < 1 or prop_num > len(results):
+            return f"Property {prop_num} not found."
+        row = results[prop_num - 1]
+        return format_property_details(row, prop_num, include_rent=rental_mode)
+    
+    elif action == "send_email":
+        prop_num = action_info.get("property_number")
+        subject = action_info.get("subject", "Inquiry about property")
+        body = action_info.get("body", "Hello, I am interested in this property. Please provide more details.")
+
+        results = user_last_search_results.get(sender, [])
+        if not results:
+            return "Please run a property search first to get a list of properties."
+
+        if prop_num is None or prop_num < 1 or prop_num > len(results):
+            return f"Property {prop_num} not found."
+
+        row = results[prop_num - 1]
+        from realtor import send_email_to_realtor
+        return send_email_to_realtor(row, subject, body)
+
+    # Show rentals
+    if action == "show_rent" or rental_mode:
+        df = pd.DataFrame(results)
+        return _format_results(df, {}, sender, prefix="Rental property estimates", show_favorite_option=True, rental_mode=True)
+
+    return "Sorry, I didn’t understand the property action."
+
+def format_property_details(row: Dict[str, Any], prop_num: int, include_rent: bool = False) -> str:
+    """Return a nicely formatted details string for one property."""
+    lines = [f"Details for property {prop_num}:"]
+    
+    address = clean_value(row.get("formattedAddress")) or row.get("addressLine1") or "Unknown"
+    price_val = row.get("price")
+    price = pretty_price(price_val)
+
+    if include_rent and pd.notna(price_val):
+        try:
+            rent_estimate = round(float(price_val) * 0.01)
+            price = f"Rent Estimate: ${rent_estimate:,}/month"
+        except Exception:
+            pass
+
+    beds = row.get("bedrooms")
+    baths = row.get("bathrooms")
+    sqft = row.get("squareFootage")
+    lot = row.get("lotSize")
+    year = row.get("yearBuilt")
+    status = row.get("status")
+    listing_type = row.get("listingType")
+    dom = row.get("daysOnMarket")
+
+    lines.append(f"- Address: {address}")
+    if price: 
+        lines.append(f"- {price}")
+    if pd.notna(beds): 
+        lines.append(f"- Bedrooms: {int(beds)}")
+    if pd.notna(baths): 
+        lines.append(f"- Bathrooms: {int(baths)}")
+    if pd.notna(sqft): 
+        lines.append(f"- Square Footage: {int(sqft)}")
+    if pd.notna(lot): 
+        lines.append(f"- Lot Size: {int(lot)}")
+    if pd.notna(year): 
+        lines.append(f"- Year Built: {int(year)}")
+    if status: 
+        lines.append(f"- Status: {status}")
+    if listing_type: 
+        lines.append(f"- Listing Type: {listing_type}")
+    if pd.notna(dom): 
+        lines.append(f"- Days on Market: {dom}")
+    
+    contact = build_contact_info(row)
+    if contact: 
+        lines.append(f"- Contact: {contact}")
+
+    return "\n".join(lines)
 
 def normalize_operator(op: Optional[str]) -> Optional[str]:
     if op is None:
@@ -495,8 +614,7 @@ def handle_user_query(sender: str, understood_query: Dict[str, Any]) -> str:
         else:
             return list_favorites(sender)
 
-    # Reset detection...
-
+    # Reset detection
     if _is_reset_command_text(original_message):
         user_context[sender] = {}
         return "Your search filters have been reset."
@@ -547,6 +665,12 @@ def handle_user_query(sender: str, understood_query: Dict[str, Any]) -> str:
         user_context[sender] = merged
         return _run_rental_query(sender, merged)
 
+    # Property actions (sorting, contact info, etc.)
+    if isinstance(llm_analysis, dict) and llm_analysis.get("intent") == "property_action":
+        key_info = llm_analysis.get("key_info", {}) or {}
+        action_info = key_info.get("property_action", {}) or {}
+        return handle_property_action(sender, action_info)
+
     # Other handlers
     msg_lower = original_message.lower()
     if any(k in msg_lower for k in ["price", "cost", "how much"]):
@@ -559,7 +683,6 @@ def handle_user_query(sender: str, understood_query: Dict[str, Any]) -> str:
         return handle_urgent_query(original_message, llm_analysis)
 
     return handle_general_query(original_message, llm_analysis)
-
 
 # ---------------- Rentals filtering ----------------
 def _run_rental_query(sender: str, filters: Dict[str, Any]) -> str:
@@ -625,62 +748,64 @@ def _run_rental_query(sender: str, filters: Dict[str, Any]) -> str:
     return _format_results(df, filters, sender)
 
 
-def _format_results(df: pd.DataFrame, filters: Dict[str, Any], sender: str, prefix: str = "Sure! Here are a few listings that match your request", show_favorite_option: bool = True) -> str:
+def _format_results(df: pd.DataFrame, filters: Dict[str, Any], sender: str, prefix: str = "Here are some properties that match your request", show_favorite_option: bool = True) -> str:
     """Enhanced results formatting with property IDs for easier favoriting"""
     results = df.head(5).to_dict(orient="records")
     
     # Store the results for this user
     user_last_search_results[sender] = results
     
-    # Simple, clean prefix without filter details
-    lines = [f"{prefix}:\n"]
+    if show_favorite_option:
+        lines = [f"{prefix} (Active filters: {summarize_filters(filters)}):\n"]
+    else:
+        lines = [f"{prefix}:\n"]
 
     for i, row in enumerate(results, 1):
         address = clean_value(row.get("formattedAddress")) or row.get("addressLine1") or row.get("city") or "Unknown"
         price_val = row.get("price")
+
+        if rental_mode and pd.notna(price_val):
+            price_str = f"Rent Estimate: ${round(float(price_val) * 0.01):,}/month"
+        else:
+            price_str = pretty_price(price_val)
+
         bedrooms_val = row.get("bedrooms")
         bathrooms_val = row.get("bathrooms")
         
-        # Create a more readable multi-line format
-        property_lines = []
-        
-        # Main property line with address and price
-        main_line = f"🏠 Property {i}: {address}"
+        parts = [f"- Property {i}: {address}"]
         if pd.notna(price_val):
-            main_line += f" - {pretty_price(price_val)}"
-        property_lines.append(main_line)
-        
-        # Details line with bedrooms/bathrooms
-        details = []
+            parts.append(pretty_price(price_val))
+
+        br_parts = []
         if pd.notna(bedrooms_val):
             try:
-                details.append(f"🛏️ {int(bedrooms_val)} bed")
+                br_parts.append(f"{int(bedrooms_val)} bed")
             except Exception:
-                details.append(f"🛏️ {bedrooms_val} bed")
+                br_parts.append(f"{bedrooms_val} bed")
         if pd.notna(bathrooms_val):
             try:
-                details.append(f"🚿 {int(bathrooms_val)} bath")
+                br_parts.append(f"{int(bathrooms_val)} bath")
             except Exception:
-                details.append(f"🚿 {bathrooms_val} bath")
-        
-        if details:
-            property_lines.append(f"   {' • '.join(details)}")
-        
-        # Contact line
+                br_parts.append(f"{bathrooms_val} bath")
+        if br_parts:
+            parts.append("| " + " / ".join(br_parts))
+
         contact = build_contact_info(row)
         if contact:
-            property_lines.append(f"   📞 Contact: {contact}")
-        
-        # Favorite instruction
+            parts.append("| Contact: " + contact)
+
+        # Add favoriting instruction with simple number
         if show_favorite_option:
-            property_lines.append(f"   💫 Say 'favorite {i}' to save this property")
-        
-        # Add blank line for spacing
-        property_lines.append("")
-        
-        lines.extend(property_lines)
+            parts.append(f"| Say 'favorite {i}' to save")
+
+        lines.append(" ".join(parts))
+
+    # Add helpful instructions at the bottom
+    if show_favorite_option:
+        lines.append(f"\nTip: Use 'favorite 1', 'favorite 2', etc. to add properties to favorites, then 'show favorites' to view them later")
 
     return "\n".join(lines)
+
 
 
 # --- Other simple handlers ---
