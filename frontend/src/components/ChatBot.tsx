@@ -138,9 +138,10 @@ export const ChatBot = () => {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-120px)] max-w-5xl mx-auto relative">
-      {/* Minimalist Chat Header - design.md style */}
-      <div className="card-minimal border-0 p-6 rounded-t-xl">
+    <div className="min-h-screen py-4 px-4">
+      <div className="flex flex-col h-[calc(100vh-80px)] max-w-7xl mx-auto relative bg-card/50 backdrop-blur-sm rounded-2xl shadow-lg border border-border/20">
+        {/* Minimalist Chat Header - design.md style */}
+        <div className="card-minimal border-0 p-6 rounded-t-2xl bg-card/80">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 bg-primary rounded-full flex items-center justify-center">
             <Bot className="w-6 h-6 text-primary-foreground" />
@@ -160,8 +161,8 @@ export const ChatBot = () => {
         </div>
       </div>
 
-      {/* Clean Messages Area */}
-      <ScrollArea className="flex-1 p-6 bg-background/50">
+        {/* Clean Messages Area */}
+        <ScrollArea className="flex-1 p-8 bg-background/30 mx-4">
         <div className="space-y-6">
           {messages.map((message) => (
             <div
@@ -183,7 +184,7 @@ export const ChatBot = () => {
                     : "bg-card border border-border/50"
                 }`}
               >
-                <p className={`leading-relaxed ${
+                <p className={`leading-relaxed whitespace-pre-line ${
                   message.sender === "user" ? "text-primary-foreground" : "text-body"
                 }`}>{message.text}</p>
                 
@@ -286,8 +287,8 @@ export const ChatBot = () => {
         </div>
       </ScrollArea>
 
-      {/* Clean Input Area */}
-      <div className="card-minimal border-0 p-6 rounded-b-xl">
+        {/* Clean Input Area */}
+        <div className="card-minimal border-0 p-6 rounded-b-2xl bg-card/80 mx-4 mb-4">
         <div className="flex gap-3">
           <Input
             value={inputValue}
@@ -307,26 +308,6 @@ export const ChatBot = () => {
           </Button>
         </div>
         
-        {/* Quick Action Buttons */}
-        <div className="flex gap-2 mt-3 flex-wrap">
-          {[
-            "Show me apartments under $2000",
-            "I need a 2-bedroom apartment", 
-            "Find properties in downtown area",
-            "What's available with parking?"
-          ].map((suggestion) => (
-            <Button
-              key={suggestion}
-              variant="outline"
-              size="sm"
-              className="text-xs h-7"
-              onClick={() => setInputValue(suggestion)}
-              disabled={isTyping}
-            >
-              {suggestion}
-            </Button>
-          ))}
-        </div>
         
         {/* Reset Conversation Button */}
         <div className="flex justify-center mt-2">
@@ -348,6 +329,7 @@ export const ChatBot = () => {
           >
             Reset Conversation
           </Button>
+        </div>
         </div>
       </div>
     </div>

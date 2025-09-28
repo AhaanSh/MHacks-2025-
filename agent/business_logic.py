@@ -612,7 +612,7 @@ def _run_rental_query(sender: str, filters: Dict[str, Any]) -> str:
                 df = df[cond]
 
     if df.empty:
-        return "Sorry, I couldn't find any properties matching your request. (Active filters: " + summarize_filters(filters) + ")"
+        return "Sorry, I couldn't find any properties matching those criteria. You might want to try adjusting your search requirements or exploring a different area."
 
     if "id" in df.columns:
         df = df.drop_duplicates(subset=["id"])
@@ -625,17 +625,15 @@ def _run_rental_query(sender: str, filters: Dict[str, Any]) -> str:
     return _format_results(df, filters, sender)
 
 
-def _format_results(df: pd.DataFrame, filters: Dict[str, Any], sender: str, prefix: str = "Here are some properties that match your request", show_favorite_option: bool = True) -> str:
+def _format_results(df: pd.DataFrame, filters: Dict[str, Any], sender: str, prefix: str = "Sure! Here are a few listings that match your request", show_favorite_option: bool = True) -> str:
     """Enhanced results formatting with property IDs for easier favoriting"""
     results = df.head(5).to_dict(orient="records")
     
     # Store the results for this user
     user_last_search_results[sender] = results
     
-    if show_favorite_option:
-        lines = [f"{prefix} (Active filters: {summarize_filters(filters)}):\n"]
-    else:
-        lines = [f"{prefix}:\n"]
+    # Simple, clean prefix without filter details
+    lines = [f"{prefix}:\n"]
 
     for i, row in enumerate(results, 1):
         address = clean_value(row.get("formattedAddress")) or row.get("addressLine1") or row.get("city") or "Unknown"
@@ -643,37 +641,44 @@ def _format_results(df: pd.DataFrame, filters: Dict[str, Any], sender: str, pref
         bedrooms_val = row.get("bedrooms")
         bathrooms_val = row.get("bathrooms")
         
-        parts = [f"- Property {i}: {address}"]
+        # Create a more readable multi-line format
+        property_lines = []
+        
+        # Main property line with address and price
+        main_line = f"🏠 Property {i}: {address}"
         if pd.notna(price_val):
-            parts.append(pretty_price(price_val))
-
-        br_parts = []
+            main_line += f" - {pretty_price(price_val)}"
+        property_lines.append(main_line)
+        
+        # Details line with bedrooms/bathrooms
+        details = []
         if pd.notna(bedrooms_val):
             try:
-                br_parts.append(f"{int(bedrooms_val)} bed")
+                details.append(f"🛏️ {int(bedrooms_val)} bed")
             except Exception:
-                br_parts.append(f"{bedrooms_val} bed")
+                details.append(f"🛏️ {bedrooms_val} bed")
         if pd.notna(bathrooms_val):
             try:
-                br_parts.append(f"{int(bathrooms_val)} bath")
+                details.append(f"🚿 {int(bathrooms_val)} bath")
             except Exception:
-                br_parts.append(f"{bathrooms_val} bath")
-        if br_parts:
-            parts.append("| " + " / ".join(br_parts))
-
+                details.append(f"🚿 {bathrooms_val} bath")
+        
+        if details:
+            property_lines.append(f"   {' • '.join(details)}")
+        
+        # Contact line
         contact = build_contact_info(row)
         if contact:
-            parts.append("| Contact: " + contact)
-
-        # Add favoriting instruction with simple number
+            property_lines.append(f"   📞 Contact: {contact}")
+        
+        # Favorite instruction
         if show_favorite_option:
-            parts.append(f"| Say 'favorite {i}' to save")
-
-        lines.append(" ".join(parts))
-
-    # Add helpful instructions at the bottom
-    if show_favorite_option:
-        lines.append(f"\nTip: Use 'favorite 1', 'favorite 2', etc. to add properties to favorites, then 'show favorites' to view them later")
+            property_lines.append(f"   💫 Say 'favorite {i}' to save this property")
+        
+        # Add blank line for spacing
+        property_lines.append("")
+        
+        lines.extend(property_lines)
 
     return "\n".join(lines)
 

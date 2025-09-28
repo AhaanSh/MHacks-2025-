@@ -8,13 +8,18 @@ import uuid
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import httpx
+from dotenv import load_dotenv
 
-# Import your existing MCP agent functions
+# Load environment variables from agent directory
 import sys
 import os
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'agent'))
+agent_path = os.path.join(os.path.dirname(__file__), '..', 'agent')
+sys.path.append(agent_path)
+load_dotenv(os.path.join(agent_path, '.env'))
+
 from business_logic import handle_user_query
 from agents import understand_query
 
@@ -109,61 +114,77 @@ def get_demo_response(message: str) -> MCPResponse:
 def format_properties_from_business_logic(response_text: str) -> List[PropertyInfo]:
     """
     Parse the business logic response and extract property information
-    This is a simplified parser for demo purposes
+    Updated to handle the new emoji-based format
     """
     properties = []
     
-    # Simple parsing - look for property patterns in the response
     lines = response_text.split('\n')
-    current_property = None
+    current_property = {}
     
     for line in lines:
         line = line.strip()
-        if line.startswith('- ') and '|' in line:
-            # Parse format: "- Address | $rent | bed bed / bath bath"
-            parts = line[2:].split('|')
-            if len(parts) >= 3:
-                address = parts[0].strip()
-                rent_str = parts[1].strip().replace('$', '').replace(',', '')
-                bed_bath = parts[2].strip()
+        
+        # Look for property header line with house emoji
+        if line.startswith('🏠 Property'):
+            # If we have a current property, save it
+            if current_property:
+                properties.append(create_property_info(current_property))
+                current_property = {}
+            
+            # Parse: "🏠 Property 1: Address - $Price"
+            try:
+                # Extract address and price
+                parts = line.split(':', 1)[1].strip()  # Remove "🏠 Property 1:"
+                if ' - $' in parts:
+                    address, price_str = parts.rsplit(' - $', 1)
+                    price_str = price_str.replace(',', '')
+                    current_property['address'] = address.strip()
+                    current_property['rent'] = int(price_str) if price_str.isdigit() else 1500
+                else:
+                    current_property['address'] = parts.strip()
+                    current_property['rent'] = 1500
+            except:
+                current_property['address'] = "Unknown Address"
+                current_property['rent'] = 1500
+        
+        # Look for bedroom/bathroom info
+        elif '🛏️' in line and 'bed' in line:
+            try:
+                bed_part = line.split('🛏️')[1].split('bed')[0].strip()
+                current_property['bedrooms'] = int(bed_part) if bed_part.isdigit() else 2
+            except:
+                current_property['bedrooms'] = 2
                 
-                try:
-                    rent = int(rent_str) if rent_str.isdigit() else 1500
-                except:
-                    rent = 1500
-                
-                # Extract bedroom/bathroom info
-                bedrooms = 2
-                bathrooms = 1.0
-                if 'bed' in bed_bath:
-                    try:
-                        bed_part = bed_bath.split('bed')[0].strip()
-                        bedrooms = int(bed_part) if bed_part.isdigit() else 2
-                    except:
-                        pass
-                
-                if 'bath' in bed_bath:
-                    try:
-                        bath_parts = bed_bath.split('/')
-                        if len(bath_parts) > 1:
-                            bath_part = bath_parts[1].replace('bath', '').strip()
-                            bathrooms = float(bath_part) if bath_part.replace('.', '').isdigit() else 1.0
-                    except:
-                        pass
-                
-                property_info = PropertyInfo(
-                    id=str(uuid.uuid4()),
-                    address=address,
-                    rent=rent,
-                    bedrooms=bedrooms,
-                    bathrooms=bathrooms,
-                    description=f"Great property at {address}",
-                    amenities=["Parking", "Laundry"],
-                    landlord={"name": "Property Manager", "email": "contact@property.com", "phone": "555-0199"}
-                )
-                properties.append(property_info)
+        elif '🚿' in line and 'bath' in line:
+            try:
+                bath_part = line.split('🚿')[1].split('bath')[0].strip()
+                current_property['bathrooms'] = float(bath_part) if bath_part.replace('.', '').isdigit() else 1.0
+            except:
+                current_property['bathrooms'] = 1.0
+        
+        # Look for contact info
+        elif '📞 Contact:' in line:
+            contact_info = line.split('📞 Contact:', 1)[1].strip()
+            current_property['contact'] = contact_info
+    
+    # Don't forget the last property
+    if current_property:
+        properties.append(create_property_info(current_property))
     
     return properties
+
+def create_property_info(prop_data: dict) -> PropertyInfo:
+    """Helper function to create PropertyInfo from parsed data"""
+    return PropertyInfo(
+        id=str(uuid.uuid4()),
+        address=prop_data.get('address', 'Unknown Address'),
+        rent=prop_data.get('rent', 1500),
+        bedrooms=prop_data.get('bedrooms', 2),
+        bathrooms=prop_data.get('bathrooms', 1.0),
+        description=f"Great property at {prop_data.get('address', 'this location')}",
+        amenities=["Parking", "Laundry"],
+        landlord={"name": "Property Manager", "email": "contact@property.com", "phone": "555-0199"}
+    )
 
 async def communicate_with_mcp_agent(message: str, conversation_id: str) -> MCPResponse:
     """
@@ -192,6 +213,15 @@ async def communicate_with_mcp_agent(message: str, conversation_id: str) -> MCPR
 
 # FastAPI endpoints
 app = FastAPI()
+
+# Add CORS middleware to allow frontend connections
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],  # Next.js default ports
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.post("/api/chat", response_model=MCPResponse)
 async def chat_endpoint(request: ChatRequest):

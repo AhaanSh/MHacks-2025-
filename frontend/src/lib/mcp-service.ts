@@ -163,8 +163,15 @@ export class MCPService {
     } catch (error) {
       console.error('Error communicating with MCP agent:', error);
       
-      // Fallback to demo responses for reliability
-      if (this.isDemoMode || !navigator.onLine) {
+      // Log the actual error for debugging
+      console.error('Fetch error details:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        url: `${this.BASE_URL}/chat`,
+        error
+      });
+      
+      // Only fallback to demo responses if we're offline - remove demo mode fallback for testing
+      if (!navigator.onLine) {
         return this.getDemoResponse(message);
       }
 
@@ -280,11 +287,15 @@ export class MCPService {
    */
   static async healthCheck(): Promise<boolean> {
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout for health check
+      
       const response = await fetch(`${this.BASE_URL}/health`, {
         method: 'GET',
-        signal: AbortSignal.timeout(5000), // 5 second timeout for health check
+        signal: controller.signal,
       });
       
+      clearTimeout(timeoutId);
       return response.ok;
     } catch (error) {
       console.error('Health check failed:', error);
