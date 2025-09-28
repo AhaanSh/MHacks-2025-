@@ -1,10 +1,11 @@
 # MHacks 2025 - Rental AI (FE/BE Split)
 
-A simple split:
+## Project Overview
+Rent AI makes renting easy by combining Fetch.ai agents, Gemini, and AgentMail. It automatically analyzes rental property data to match user preferences, then acts as a personal real estate assistant to handle communication with landlords—scheduling viewings, requesting details, and guiding users through rental platforms. Our goal is to make finding and securing housing faster, smarter, and stress-free.
 - backend/: FastAPI app
 - frontend/: React + Vite app
 
-## Backend
+## Backend Setup
 1. cd backend
 2. python3 -m venv .venv && source .venv/bin/activate
 3. pip install -r requirements.txt
@@ -12,7 +13,7 @@ A simple split:
 
 Health: http://127.0.0.1:8000/health
 
-## Frontend
+## Frontend Setup
 1. cd frontend
 2. cp .env.example .env
 3. npm install
@@ -21,11 +22,3 @@ Health: http://127.0.0.1:8000/health
 Dev server: http://localhost:5173
 
 The frontend reads `VITE_API_BASE` from `.env` and calls `/health` on the backend.
-
-## Gemini Property Data Extractor
-1. Set up a virtual environment: python3 -m venv env  
-2. Activate the virtual environment: source env/bin/activate
-3. Install all requirements: pip install fastapi uvicorn pandas google-genai pydantic jinja2 openpyxl python-multipart
-4. Export the API Key.
-5. Run the app: python api_app.py
-6. App URL: http://127.0.0.1:8000 
