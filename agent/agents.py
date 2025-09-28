@@ -72,10 +72,11 @@ async def understand_query(user_message: str) -> dict:
             "property_id": string or null,
             "reset": boolean or null,
             "property_action": {{
-              "action": one of ["get_contact", "sort", "compare", "details", null],
+              "action": one of ["get_contact", "sort", "compare", "details", "show_rent", null],
               "property_number": number or null,
               "field": string or null,
-              "order": one of ["asc", "desc", null]
+              "order": one of ["asc", "desc", null],
+              "rental_mode": boolean or null
             }}
           }},
           "urgency": one of ["low", "medium", "high"]
@@ -88,6 +89,8 @@ async def understand_query(user_message: str) -> dict:
           {{"intent": "property_action", "key_info": {{"property_action": {{"action": "sort", "field": "price", "order": "asc"}}}}}}
         - "which has more bedrooms, property 1 or 2" →
           {{"intent": "property_action", "key_info": {{"property_action": {{"action": "compare", "field": "bedrooms"}}}}}}
+        - "show me rental properties in Austin" →
+          {{"intent": "property_action", "key_info": {{"property_action": {{"action": "show_rent", "rental_mode": true}}}}}}
 
         User message: {user_message}
         """
@@ -95,7 +98,6 @@ async def understand_query(user_message: str) -> dict:
         resp = model.generate_content(prompt)
         llm_text = resp.text.strip()
 
-        # Clean markdown fences if present
         if llm_text.startswith("```"):
             llm_text = llm_text.strip("`")
             if llm_text.lower().startswith("json"):

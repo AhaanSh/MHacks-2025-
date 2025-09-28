@@ -87,6 +87,7 @@ def handle_property_action(sender: str, action_info: Dict[str, Any]) -> str:
     prop_num = action_info.get("property_number")
     field = action_info.get("field")
     order = action_info.get("order")
+    rental_mode = action_info.get("rental_mode", False)
 
     # Contact info lookup
     if action == "get_contact":
@@ -104,9 +105,9 @@ def handle_property_action(sender: str, action_info: Dict[str, Any]) -> str:
         if field not in df.columns:
             return f"I can't sort by {field}. Available fields: {list(df.columns)}"
         df_sorted = df.sort_values(by=field, ascending=(order != "desc"))
-        return _format_results(df_sorted, {}, sender, prefix=f"Properties sorted by {field} ({order or 'asc'})")
+        return _format_results(df_sorted, {}, sender, prefix=f"Properties sorted by {field} ({order or 'asc'})", rental_mode=rental_mode)
 
-    # Comparison (simple 2-property compare)
+    # Comparison
     if action == "compare":
         if not field:
             return "Please specify what to compare (e.g., price, bedrooms, bathrooms)."
@@ -116,14 +117,69 @@ def handle_property_action(sender: str, action_info: Dict[str, Any]) -> str:
         val1, val2 = row1.get(field), row2.get(field)
         return f"Property 1 has {val1} {field}, Property 2 has {val2} {field}."
 
-    # Details (dump full row)
+    # Details
     if action == "details":
         if not prop_num or prop_num < 1 or prop_num > len(results):
             return f"Property {prop_num} not found."
         row = results[prop_num - 1]
-        return f"Details for property {prop_num}: {row}"
+        return format_property_details(row, prop_num, include_rent=rental_mode)
+
+    # Show rentals
+    if action == "show_rent" or rental_mode:
+        df = pd.DataFrame(results)
+        return _format_results(df, {}, sender, prefix="Rental property estimates", show_favorite_option=True, rental_mode=True)
 
     return "Sorry, I didn’t understand the property action."
+
+def format_property_details(row: Dict[str, Any], prop_num: int, include_rent: bool = False) -> str:
+    """Return a nicely formatted details string for one property."""
+    lines = [f"Details for property {prop_num}:"]
+    
+    address = clean_value(row.get("formattedAddress")) or row.get("addressLine1") or "Unknown"
+    price_val = row.get("price")
+    price = pretty_price(price_val)
+
+    if include_rent and pd.notna(price_val):
+        try:
+            rent_estimate = round(float(price_val) * 0.01)
+            price = f"Rent Estimate: ${rent_estimate:,}/month"
+        except Exception:
+            pass
+
+    beds = row.get("bedrooms")
+    baths = row.get("bathrooms")
+    sqft = row.get("squareFootage")
+    lot = row.get("lotSize")
+    year = row.get("yearBuilt")
+    status = row.get("status")
+    listing_type = row.get("listingType")
+    dom = row.get("daysOnMarket")
+
+    lines.append(f"- Address: {address}")
+    if price: 
+        lines.append(f"- {price}")
+    if pd.notna(beds): 
+        lines.append(f"- Bedrooms: {int(beds)}")
+    if pd.notna(baths): 
+        lines.append(f"- Bathrooms: {int(baths)}")
+    if pd.notna(sqft): 
+        lines.append(f"- Square Footage: {int(sqft)}")
+    if pd.notna(lot): 
+        lines.append(f"- Lot Size: {int(lot)}")
+    if pd.notna(year): 
+        lines.append(f"- Year Built: {int(year)}")
+    if status: 
+        lines.append(f"- Status: {status}")
+    if listing_type: 
+        lines.append(f"- Listing Type: {listing_type}")
+    if pd.notna(dom): 
+        lines.append(f"- Days on Market: {dom}")
+    
+    contact = build_contact_info(row)
+    if contact: 
+        lines.append(f"- Contact: {contact}")
+
+    return "\n".join(lines)
 
 def normalize_operator(op: Optional[str]) -> Optional[str]:
     if op is None:
@@ -676,13 +732,10 @@ def _run_rental_query(sender: str, filters: Dict[str, Any]) -> str:
     return _format_results(df, filters, sender)
 
 
-def _format_results(df: pd.DataFrame, filters: Dict[str, Any], sender: str, prefix: str = "Here are some properties that match your request", show_favorite_option: bool = True) -> str:
-    """Enhanced results formatting with property IDs for easier favoriting"""
+def _format_results(df: pd.DataFrame, filters: Dict[str, Any], sender: str, prefix: str = "Here are some properties that match your request", show_favorite_option: bool = True, rental_mode: bool = False) -> str:
     results = df.head(5).to_dict(orient="records")
-    
-    # ✅ Store ALL displayed results for this user
     user_last_search_results[sender] = results.copy()
-    
+
     if show_favorite_option:
         lines = [f"{prefix} (Active filters: {summarize_filters(filters)}):\n"]
     else:
@@ -691,24 +744,24 @@ def _format_results(df: pd.DataFrame, filters: Dict[str, Any], sender: str, pref
     for i, row in enumerate(results, 1):
         address = clean_value(row.get("formattedAddress")) or row.get("addressLine1") or row.get("city") or "Unknown"
         price_val = row.get("price")
+
+        if rental_mode and pd.notna(price_val):
+            price_str = f"Rent Estimate: ${round(float(price_val) * 0.01):,}/month"
+        else:
+            price_str = pretty_price(price_val)
+
         bedrooms_val = row.get("bedrooms")
         bathrooms_val = row.get("bathrooms")
         
         parts = [f"- Property {i}: {address}"]
-        if pd.notna(price_val):
-            parts.append(pretty_price(price_val))
+        if price_str:
+            parts.append(price_str)
 
         br_parts = []
         if pd.notna(bedrooms_val):
-            try:
-                br_parts.append(f"{int(bedrooms_val)} bed")
-            except Exception:
-                br_parts.append(f"{bedrooms_val} bed")
+            br_parts.append(f"{int(bedrooms_val)} bed")
         if pd.notna(bathrooms_val):
-            try:
-                br_parts.append(f"{int(bathrooms_val)} bath")
-            except Exception:
-                br_parts.append(f"{bathrooms_val} bath")
+            br_parts.append(f"{int(bathrooms_val)} bath")
         if br_parts:
             parts.append("| " + " / ".join(br_parts))
 
@@ -722,7 +775,7 @@ def _format_results(df: pd.DataFrame, filters: Dict[str, Any], sender: str, pref
         lines.append(" ".join(parts))
 
     if show_favorite_option:
-        lines.append(f"\nTip: Use 'favorite 1', 'favorite 2', etc. to add properties to favorites, then 'show favorites' to view them later")
+        lines.append("\nTip: Use 'favorite 1', 'favorite 2', etc. to add properties to favorites, then 'show favorites' to view them later")
 
     return "\n".join(lines)
 
