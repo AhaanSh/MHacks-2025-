@@ -37,14 +37,8 @@ const PROPERTY_SUGGESTIONS = [
 ];
 
 export const ChatBot = () => {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "1",
-      text: "Hi! I'm your AI apartment hunting assistant. I can help you find properties, answer questions about listings, schedule viewings, and even negotiate rent. What can I help you with today?",
-      sender: "ai",
-      timestamp: new Date().toLocaleTimeString(),
-    },
-  ]);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [isInitialized, setIsInitialized] = useState(false);
   const [inputValue, setInputValue] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -52,6 +46,20 @@ export const ChatBot = () => {
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
+
+  useEffect(() => {
+    if (!isInitialized) {
+      setMessages([
+        {
+          id: "1",
+          text: "Hi! I'm your AI apartment hunting assistant. I can help you find properties, answer questions about listings, schedule viewings, and even negotiate rent. What can I help you with today?",
+          sender: "ai",
+          timestamp: new Date().toLocaleTimeString(),
+        },
+      ]);
+      setIsInitialized(true);
+    }
+  }, [isInitialized]);
 
   useEffect(() => {
     scrollToBottom();
