@@ -52,7 +52,7 @@ export default function Home() {
             >
               <img 
                 src="/rentai-logo.png" 
-                alt="RentAI Logo" 
+                alt="rentAI Logo" 
                 className="h-16 w-auto"
               />
             </div>
@@ -116,7 +116,7 @@ export default function Home() {
       {/* Footer */}
       <footer className="border-t bg-card/70 backdrop-blur-sm mt-16">
         <div className="container mx-auto px-4 py-6 text-center text-muted-foreground">
-          <p>RentAI - Made with Maize and Blue</p>
+          <p>rentAI - Made with Maize and Blue</p>
         </div>
       </footer>
     </div>

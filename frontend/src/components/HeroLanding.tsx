@@ -66,7 +66,7 @@ export const HeroLanding = ({ onNavigateToChat, onNavigateToDashboard, isConnect
       <section className="max-w-7xl mx-auto px-6 py-16">
         <div className="text-center mb-12">
           <h2 className="text-4xl font-bold text-heading mb-4">
-            Why Choose RentAI?
+            Why Choose rentAI?
           </h2>
           <p className="text-xl text-body max-w-2xl mx-auto">
             Our AI-powered platform makes apartment hunting effortless and efficient.
@@ -114,10 +114,10 @@ export const HeroLanding = ({ onNavigateToChat, onNavigateToDashboard, isConnect
         <div className="max-w-4xl mx-auto text-center px-6">
           <div className="space-y-6">
             <h2 className="text-4xl font-bold text-heading">
-              Ready to Find Your Dream Home?
+              Ready to Find Your Dream Home or Apartment?
             </h2>
             <p className="text-xl text-body">
-              Join thousands of happy renters who found their perfect apartment with RentAI.
+              Find your perfect abode with rentAI.
             </p>
             <div className="flex justify-center gap-4">
               <Button

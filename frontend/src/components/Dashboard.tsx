@@ -17,12 +17,12 @@ interface DashboardProps {
 export const Dashboard = ({ onNavigateToChat, isConnected }: DashboardProps) => {
   const [properties] = useState([]);
   const [dashboardStats, setDashboardStats] = useState({
-    totalProperties: 1247,
-    favoritedProperties: 12,
-    scheduledTours: 3,
-    activeConversations: 2,
-    avgRent: 2450,
-    savedSearches: 8
+    totalProperties: 0,
+    favoritedProperties: 0,
+    scheduledTours: 0,
+    activeConversations: 0,
+    avgRent: 0,
+    savedSearches: 0
   });
 
   return (

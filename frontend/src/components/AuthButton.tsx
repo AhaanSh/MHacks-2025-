@@ -74,7 +74,7 @@ export function AuthButton() {
         </DialogTrigger>
         <DialogContent className="sm:max-w-[400px]">
           <DialogHeader>
-            <DialogTitle>Welcome to RentAI</DialogTitle>
+            <DialogTitle>Welcome to rentAI!</DialogTitle>
           </DialogHeader>
           <Tabs defaultValue="signin" className="w-full">
             <TabsList className="grid w-full grid-cols-2">

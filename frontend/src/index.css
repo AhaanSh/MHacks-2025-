@@ -151,7 +151,7 @@ Using design.md specifications: #f5f5f5 background, #333333 text, #ff9966 orange
   }
 }
 
-/* RentAI Dashboard Animations */
+/* rentAI Dashboard Animations */
 @layer utilities {
   .pulse-active {
     @apply animate-pulse;
