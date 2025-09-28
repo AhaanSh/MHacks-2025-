@@ -8,16 +8,37 @@ load_dotenv()
 api_key = os.getenv("AGENTMAIL_API_KEY")
 
 if not api_key:
-    raise ValueError("❌ AGENTMAIL_API_KEY not found in .env")
+    raise ValueError(" AGENTMAIL_API_KEY not found in .env")
 
 # Initialize client
 client = AgentMail(api_key=api_key)
+
+def send_email_to_realtor(property_info, subject: str, body: str):
+    """Send an email to the realtor of the given property."""
+    try:
+        agent_email = property_info.get("agent_email")
+        if not agent_email:
+            return f"❌ No agent email found for property {property_info.get('formattedAddress', 'Unknown')}"
+
+        print(f"📧 Sending email to {agent_email} about {property_info.get('formattedAddress')}")
+
+        response = client.messages.send(
+            inbox_id="rental@agentmail.to",
+            to=[agent_email],
+            subject=subject,
+            text=body,
+            html=f"<p>{body}</p>"
+        )
+
+        return f"✅ Email sent to {agent_email} (Message ID: {getattr(response, 'message_id', 'Unknown')})"
+    except Exception as e:
+        return f"⚠️ Failed to send email: {e}"
 
 # Add the REAL messages API to the client
 if not hasattr(client, 'messages'):
     try:
         # Import the real messages client
-        from agentmail.messages.client import MessagesClient
+        from agentmail.messages import MessagesClient
         
         # Add messages property to client
         client.messages = MessagesClient(client_wrapper=client._client_wrapper)
@@ -271,9 +292,10 @@ existing_inbox_id = "rental@agentmail.to"
 print(f"✅ Connected to inbox: {existing_inbox_id}")
 
 # Get inbox details
+# Get inbox details
 try:
     inbox = client.inboxes.get(inbox_id=existing_inbox_id)
-print("Inbox details:", inbox)
+    print("Inbox details:", inbox)
 except Exception as e:
     print(f"⚠️ Could not fetch inbox details: {e}")
     # Create a mock inbox object for the existing inbox
@@ -281,6 +303,7 @@ except Exception as e:
         def __init__(self, inbox_id):
             self.inbox_id = inbox_id
     inbox = MockInbox(existing_inbox_id)
+
 
 # 2️⃣ List all threads for the existing inbox
 print(f"\n🧵 Listing threads for inbox {existing_inbox_id}...")
@@ -316,7 +339,7 @@ for t in threads:
         
         messages = messages_response.messages if hasattr(messages_response, 'messages') else messages_response
         
-    print(f"\nMessages in Thread {t.thread_id}:")
+        print(f"\nMessages in Thread {t.thread_id}:")
         if messages:
             for i, m in enumerate(messages):
                 print(f"\n--- Message {i+1} ---")
@@ -355,6 +378,7 @@ for t in threads:
     except Exception as e:
         print(f"⚠️ Could not read messages from thread {t.thread_id}: {e}")
         print(f"Available client attributes: {[attr for attr in dir(client) if not attr.startswith('_')]}")
+
 
 # 4️⃣ List existing drafts (since we can't create new ones easily)
 print("\n📝 Checking existing drafts...")

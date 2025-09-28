@@ -52,7 +52,10 @@ async def understand_query(user_message: str) -> dict:
 
         The JSON must contain exactly this shape:
         {{
-          "intent": one of ["property_search", "pricing", "booking", "support", "general", "favorites", "reset"],
+          "intent": one of [
+            "property_search", "pricing", "booking", "support", 
+            "general", "favorites", "reset", "property_action"
+          ],
           "summary": "brief summary of request",
           "key_info": {{
             "budget_min": number or null,
@@ -67,35 +70,31 @@ async def understand_query(user_message: str) -> dict:
             "property_type": string or null,
             "favorites_action": one of ["show", "add", "remove", null],
             "property_id": string or null,
-            "reset": boolean or null
+            "reset": boolean or null,
+            "property_action": {{
+              "action": one of ["get_contact", "sort", "compare", "details", "show_rent", "send_email", null],
+              "property_number": number or null,
+              "field": string or null,
+              "order": one of ["asc", "desc", null],
+              "rental_mode": boolean or null,
+              "subject": string or null,
+              "body": string or null
+            }}
           }},
           "urgency": one of ["low", "medium", "high"]
         }}
 
-        Intent Classification Rules:
-        - "favorites" intent for: "show favorites", "add to favorites", "remove from favorites", etc.
-        - "reset" intent for: "reset filters", "clear search", "start over", etc.
-        - "property_search" intent for actual property searches with criteria
-
-        Favorites Action Rules:
-        - "show" for: "show favorites", "list my favorites", "what are my favorites"
-        - "add" for: "add to favorites", "favorite this", "save this property"
-        - "remove" intent for: "remove from favorites", "unfavorite", "delete favorite"
-        - "remove favorites" intent for: "remove from favorites", "unfavorite" 
-
-        Property Search Rules:
-        - "under 500k", "less than 500k" → budget_max
-        - "over 500k", "more than 500k" → budget_min
-        - "at least N" → operator ">="
-        - "at most N" or "less than or equal to N" → operator "<="
-        - "more than N" → operator ">"
-        - "less than N" → operator "<"
-        - "exactly N" → operator "=="
-        - If a user specifies both city and state (e.g. "Austin Texas"), split them: "Austin" → city, "Texas" → state
-        - "house", "apartment", "condo", "townhome", "duplex" → property_type
-
-        Reset Detection:
-        - "reset filters", "clear search", "start over" → set reset: true
+        Examples:
+        - "give me contact info for property 1" → 
+          {{"intent": "property_action", "key_info": {{"property_action": {{"action": "get_contact", "property_number": 1}}}}}}
+        - "order the properties by lowest to highest price" → 
+          {{"intent": "property_action", "key_info": {{"property_action": {{"action": "sort", "field": "price", "order": "asc"}}}}}}
+        - "which has more bedrooms, property 1 or 2" →
+          {{"intent": "property_action", "key_info": {{"property_action": {{"action": "compare", "field": "bedrooms"}}}}}}
+        - "show me rental properties in Austin" →
+          {{"intent": "property_action", "key_info": {{"property_action": {{"action": "show_rent", "rental_mode": true}}}}}}
+        - "send an email to the realtor for property 2 saying I'd like to schedule a tour this week" →
+          {{"intent": "property_action", "key_info": {{"property_action": {{"action": "send_email", "property_number": 2, "subject": "Property Inquiry", "body": "I'd like to schedule a tour this week"}}}}}}
 
         User message: {user_message}
         """
@@ -103,7 +102,6 @@ async def understand_query(user_message: str) -> dict:
         resp = model.generate_content(prompt)
         llm_text = resp.text.strip()
 
-        # Clean markdown fences if present
         if llm_text.startswith("```"):
             llm_text = llm_text.strip("`")
             if llm_text.lower().startswith("json"):
@@ -126,6 +124,8 @@ async def understand_query(user_message: str) -> dict:
             "llm_analysis": {"error": str(e)},
             "timestamp": datetime.now(timezone.utc)
         }
+
+
 
 @chat_proto.on_message(ChatMessage)
 async def handle_message(ctx: Context, sender: str, msg: ChatMessage):
