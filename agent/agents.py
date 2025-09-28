@@ -1,135 +1,139 @@
-# agents.py
-from uagents import Agent, Context, Protocol, Model
+from datetime import datetime, timezone
+from uuid import uuid4
+import json
+import os
+import google.generativeai as genai
+from uagents import Agent, Context, Protocol
 from uagents_core.contrib.protocols.chat import (
     ChatAcknowledgement,
     ChatMessage,
+    EndSessionContent,
+    StartSessionContent,
     TextContent,
     chat_protocol_spec,
-    StartSessionContent,
-    EndSessionContent,
 )
-from functions import CriteriaRequest, RecommendationResponse, get_recommendations
-from datetime import datetime
-from uuid import uuid4
-from typing import Any, Dict
+from dotenv import load_dotenv
 
-class StructuredOutputPrompt(Model):
-    prompt: str
-    output_schema: Dict[str, Any]
+load_dotenv()
 
-class StructuredOutputResponse(Model):
-    output: Dict[str, Any]
+# Import your custom business logic
+from business_logic import handle_user_query
 
-# Address of the LLM-backed AI agent (ASI1 or OpenAI-compatible)
-AI_AGENT_ADDRESS = "agent1qtlpfshtlcxekgrfcpmv7m9zpajuwu7d5jfyachvpa4u3dkt6k0uwwp2lct"
+# Configure Gemini client (using google-generativeai)
+genai.configure(api_key=os.getenv("API_KEY"))
 
-##############
-agent = Agent(name="RentalAgent", seed="MhacksAhaanShah", port=8001, endpoint=["https://localhost:8001"], mailbox=True)
-
+agent = Agent(
+    name="AhaanShahRealEstate",
+    seed="TestingMhacksAhaanShah",
+    port=8000,
+    mailbox=True
+)
 chat_proto = Protocol(spec=chat_protocol_spec)
-struct_output_client_proto = Protocol(
-    name="StructuredOutputClientProtocol", version="0.1.0"
-)
 
-def create_text_chat(text: str, end_session: bool = False) -> ChatMessage:
+
+def create_text_chat(text: str) -> ChatMessage:
     content = [TextContent(type="text", text=text)]
-    if end_session:
-        content.append(EndSessionContent(type="end-session"))
     return ChatMessage(
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
         msg_id=uuid4(),
         content=content,
     )
 
+
+async def understand_query(user_message: str) -> dict:
+    """Use Gemini to extract structured info from a query."""
+    try:
+        model = genai.GenerativeModel("gemini-2.5-flash")
+
+        prompt = f"""
+        You are an assistant that extracts structured info from user messages.
+        Always respond with ONLY valid JSON.
+        Do NOT include explanations, markdown, or code fences.
+
+        The JSON must contain exactly this shape:
+        {{
+          "intent": one of ["property_search", "pricing", "booking", "support", "general"],
+          "summary": "brief summary of request",
+          "key_info": {{
+            "budget_min": number or null,
+            "budget_max": number or null,
+            "bedrooms": number or null,
+            "bathrooms": number or null,
+            "location": string or null
+          }},
+          "urgency": one of ["low", "medium", "high"]
+        }}
+
+        User message: {user_message}
+        """
+
+        resp = model.generate_content(prompt)
+
+        llm_text = resp.text.strip()
+
+        # --- Cleaning step: remove ```json ... ``` if present ---
+        if llm_text.startswith("```"):
+            llm_text = llm_text.strip("`")
+            if llm_text.lower().startswith("json"):
+                llm_text = llm_text[4:].strip()
+
+        try:
+            parsed = json.loads(llm_text)
+        except json.JSONDecodeError:
+            parsed = {"error": f"Invalid JSON: {llm_text}"}
+
+        return {
+            "original_query": user_message,
+            "llm_analysis": parsed,
+            "timestamp": datetime.now(timezone.utc)
+        }
+
+    except Exception as e:
+        return {
+            "original_query": user_message,
+            "llm_analysis": {"error": str(e)},
+            "timestamp": datetime.now(timezone.utc)
+        }
+
+
 @chat_proto.on_message(ChatMessage)
 async def handle_message(ctx: Context, sender: str, msg: ChatMessage):
-    ctx.logger.info(f"Got a message from {sender}: {msg.content}")
-    ctx.storage.set(str(ctx.session), sender)
-    await ctx.send(
-        sender,
-        ChatAcknowledgement(timestamp=datetime.utcnow(), acknowledged_msg_id=msg.msg_id),
-    )
+    # Send acknowledgement
+    await ctx.send(sender, ChatAcknowledgement(
+        timestamp=datetime.now(timezone.utc),
+        acknowledged_msg_id=msg.msg_id
+    ))
 
     for item in msg.content:
         if isinstance(item, StartSessionContent):
-            ctx.logger.info(f"Got a start session message from {sender}")
-            continue
+            response = create_text_chat("Hello! How can I help you today?")
+            await ctx.send(sender, response)
+
         elif isinstance(item, TextContent):
-            ctx.logger.info(f"User query: {item.text}")
-            ctx.storage.set(str(ctx.session), sender)
-            # Ask AI agent to extract structured criteria
-            await ctx.send(
-                AI_AGENT_ADDRESS,
-                StructuredOutputPrompt(
-                    prompt=item.text, output_schema=CriteriaRequest.schema()
-                ),
-            )
-        else:
-            ctx.logger.info(f"Got unexpected content from {sender}")
+            ctx.logger.info(f"Received: {item.text}")
+
+            # 1. LLM understands the query
+            understood_query = await understand_query(item.text)
+            ctx.logger.info(f"LLM Analysis: {understood_query['llm_analysis']}")
+
+            # 2. Pass to your custom business logic
+            business_response = handle_user_query(sender, understood_query)
+
+            # 3. Send response back
+            response = create_text_chat(business_response)
+            await ctx.send(sender, response)
+
+        elif isinstance(item, EndSessionContent):
+            response = create_text_chat("Goodbye!")
+            await ctx.send(sender, response)
+
 
 @chat_proto.on_message(ChatAcknowledgement)
-async def handle_ack(ctx: Context, sender: str, msg: ChatAcknowledgement):
-    ctx.logger.info(
-        f"Got an acknowledgement from {sender} for {msg.acknowledged_msg_id}"
-    )
+async def handle_acknowledgement(ctx: Context, sender: str, msg: ChatAcknowledgement):
+    ctx.logger.info(f"Message acknowledged by {sender}")
 
-@struct_output_client_proto.on_message(StructuredOutputResponse)
-async def handle_structured_output_response(
-    ctx: Context, sender: str, msg: StructuredOutputResponse
-):
-    ctx.logger.info(f"Structured output received: {msg.output}")
-    session_sender = ctx.storage.get(str(ctx.session))
-    if session_sender is None:
-        ctx.logger.error("No session sender found in storage")
-        return
-
-    # Extract query from structured output
-    try:
-        query = msg.output.get("query") if isinstance(msg.output, dict) else None
-    except Exception:
-        query = None
-    ctx.logger.info(f"Query extracted: {query}")
-
-    if not query:
-        await ctx.send(
-            session_sender,
-            create_text_chat("Sorry, I couldn't process your request. Please try again."),
-        )
-        return
-
-    try:
-        recs = get_recommendations(query)
-    except Exception as err:
-        ctx.logger.error(f"Error in recommendation: {err}")
-        await ctx.send(
-            session_sender,
-            create_text_chat("Something went wrong while finding recommendations."),
-        )
-        return
-
-    results = recs.get("results", [])
-    if not results:
-        await ctx.send(
-            session_sender,
-            create_text_chat("No matches found. Try adjusting your criteria."),
-        )
-        return
-
-    # Format top results
-    lines = ["Here are the top matches:"]
-    for i, r in enumerate(results, 1):
-        addr = r.get("address") or f"{r.get('city','')}, {r.get('state','')}"
-        price = f"${int(r['price']):,}" if r.get("price") else "N/A"
-        bb = f"{r.get('beds') or '?'} bd / {r.get('baths') or '?'} ba"
-        sqft = f"{int(r['sqft']):,} sqft" if r.get("sqft") else ""
-        score = f" (score {r.get('score')})"
-        lines.append(f"{i}) {addr} — {price} — {bb} {sqft}{score}")
-
-    reply = "\n".join(lines)
-    await ctx.send(session_sender, create_text_chat(reply))
 
 agent.include(chat_proto, publish_manifest=True)
-agent.include(struct_output_client_proto, publish_manifest=True)
 
 if __name__ == "__main__":
     agent.run()
