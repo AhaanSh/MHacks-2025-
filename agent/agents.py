@@ -52,7 +52,10 @@ async def understand_query(user_message: str) -> dict:
 
         The JSON must contain exactly this shape:
         {{
-          "intent": one of ["property_search", "pricing", "booking", "support", "general"],
+          "intent": one of [
+            "property_search", "pricing", "booking", "support", 
+            "general", "favorites", "reset", "property_action"
+          ],
           "summary": "brief summary of request",
           "key_info": {{
             "budget_min": number or null,
@@ -64,21 +67,27 @@ async def understand_query(user_message: str) -> dict:
             "city": string or null,
             "state": string or null,
             "location": string or null,
-            "property_type": string or null
+            "property_type": string or null,
+            "favorites_action": one of ["show", "add", "remove", null],
+            "property_id": string or null,
+            "reset": boolean or null,
+            "property_action": {{
+              "action": one of ["get_contact", "sort", "compare", "details", null],
+              "property_number": number or null,
+              "field": string or null,
+              "order": one of ["asc", "desc", null]
+            }}
           }},
           "urgency": one of ["low", "medium", "high"]
         }}
 
-        Extraction rules:
-        - "under 500k", "less than 500k" → budget_max
-        - "over 500k", "more than 500k" → budget_min
-        - "at least N" → operator ">="
-        - "at most N" or "less than or equal to N" → operator "<="
-        - "more than N" → operator ">"
-        - "less than N" → operator "<"
-        - "exactly N" → operator "=="
-        - If a user specifies both a city and a state (e.g. "Austin Texas"), split them: "Austin" → city, "Texas" → state. Also keep "Austin Texas" in location.
-        - "house", "apartment", "condo", "townhome", "duplex" → property_type
+        Examples:
+        - "give me contact info for property 1" → 
+          {{"intent": "property_action", "key_info": {{"property_action": {{"action": "get_contact", "property_number": 1}}}}}}
+        - "order the properties by lowest to highest price" → 
+          {{"intent": "property_action", "key_info": {{"property_action": {{"action": "sort", "field": "price", "order": "asc"}}}}}}
+        - "which has more bedrooms, property 1 or 2" →
+          {{"intent": "property_action", "key_info": {{"property_action": {{"action": "compare", "field": "bedrooms"}}}}}}
 
         User message: {user_message}
         """
