@@ -507,23 +507,80 @@ async def schedule_tour(request: ActionRequest):
 @app.post("/api/outreach", response_model=ActionResponse)
 async def setup_outreach(request: ActionRequest):
     """
-    Handle outreach setup
+    Handle outreach setup - send email of interest to property
     """
     try:
-        custom_message = request.customMessage or "I'm interested in learning more about this property."
-        # Extract property number and address for message
-        # Try to get address from mapping, fallback to provided address or ID
-        property_address = (request.propertyAddress or 
-                          property_id_to_address.get(request.propertyId) or 
-                          f"Property {request.propertyId}")
-        return ActionResponse(
-            success=True,
-            message=f"Expression of Interest Message sent to Property: {property_address}!"
-        )
+        if not EMAIL_AVAILABLE:
+            return ActionResponse(
+                success=False,
+                message="Email functionality not available. Please try again later."
+            )
+        
+        # Get property information from conversation properties
+        property_info = None
+        if request.propertyId in conversation_properties:
+            properties = conversation_properties[request.propertyId]
+            if properties:
+                property_info = properties[0]  # Use first property if multiple
+        else:
+            # Try to find property by ID in all conversations
+            for conv_id, props in conversation_properties.items():
+                for prop in props:
+                    if prop.id == request.propertyId:
+                        property_info = prop
+                        break
+                if property_info:
+                    break
+        
+        if not property_info:
+            return ActionResponse(
+                success=False,
+                message=f"Property {request.propertyId} not found. Please search for properties first."
+            )
+        
+        # Create email subject and body
+        property_address = property_info.address
+        subject = f"Strong Interest in {property_address} - Ready to Move Forward"
+        
+        custom_message = request.customMessage or f"""Hello,
+
+I hope this email finds you well. I am writing to express my strong interest in the property at {property_address}.
+
+This property appears to be exactly what I'm looking for, and I am genuinely excited about the possibility of making it my new home. I am a serious, qualified prospective tenant with excellent references and a stable income.
+
+I would love to:
+• Schedule a viewing at your earliest convenience
+• Learn more about the property's features and amenities
+• Discuss the application process and requirements
+• Understand the move-in timeline and any special considerations
+
+I am ready to move quickly on this opportunity and can provide all necessary documentation promptly. Please let me know your availability for a showing, and I will make every effort to accommodate your schedule.
+
+Thank you for your time and consideration. I look forward to hearing from you soon.
+
+Best regards,
+A Prospective Tenant
+
+P.S. I am also happy to provide references from previous landlords and can answer any questions you might have about my background and rental history."""
+        
+        # Send the email
+        result = send_email_to_realtor(property_info, subject, custom_message)
+        
+        if "✅" in result:
+            return ActionResponse(
+                success=True,
+                message=f"Expression of Interest Message sent to Property: {property_address}!"
+            )
+        else:
+            return ActionResponse(
+                success=False,
+                message=f"Failed to send email: {result}"
+            )
+            
     except Exception as e:
         return ActionResponse(
             success=False,
-            message="Failed to setup outreach. Please try again."
+            message=f"Failed to setup outreach: {str(e)}"
         )
 
 @app.get("/api/health")
