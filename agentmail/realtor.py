@@ -1,172 +1,204 @@
-# realtor.py
+"""
+Autonomous AI Rental Assistant - AgentMail Integration
+=====================================================
+
+This module provides the core AgentMail integration for the rental assistant,
+handling email communication, message processing, and autonomous responses.
+"""
+
 import os
+import logging
+from typing import Optional, List, Dict, Any
+from dataclasses import dataclass
+from datetime import datetime
 from dotenv import load_dotenv
-from agentmail import AgentMail
+from agentmail import AgentMail, SendMessageRequest, ReplyToMessageRequest, UpdateMessageRequest
 
-# Load API key
-load_dotenv()
-api_key = os.getenv("AGENTMAIL_API_KEY")
+# Configure logging
+logging.basicConfig(level=logging.WARNING, format='%(levelname)s: %(message)s')
+logger = logging.getLogger(__name__)
 
-if not api_key:
-    raise ValueError("❌ AGENTMAIL_API_KEY not found in .env")
+@dataclass
+class MessageData:
+    """Structured message data"""
+    message_id: str
+    thread_id: str
+    from_email: str
+    to_emails: List[str]
+    subject: str
+    text_content: str
+    html_content: Optional[str]
+    timestamp: datetime
+    labels: List[str]
 
-# Initialize client
-client = AgentMail(api_key=api_key)
+@dataclass
+class ConversationContext:
+    """Context for ongoing conversations"""
+    property_id: Optional[str]
+    user_preferences: Dict[str, Any]
+    conversation_history: List[MessageData]
+    current_status: str
+    last_updated: datetime
 
-# Add the REAL messages API to the client
-if not hasattr(client, 'messages'):
-    try:
-        # Import the real messages client
-        from agentmail.messages.client import MessagesClient
-        
-        # Add messages property to client
-        client.messages = MessagesClient(client_wrapper=client._client_wrapper)
-        print("✅ Added REAL messages API to client")
-        
-    except ImportError:
-        # If the real client doesn't exist, create it manually using the API structure
-        from agentmail.messages import SendMessageRequest, ReplyToMessageRequest, UpdateMessageRequest
-        
-        class RealMessagesClient:
-            def __init__(self, client_wrapper):
-                self._client_wrapper = client_wrapper
+class AgentMailManager:
+    """Manages AgentMail API interactions with proper error handling"""
+    
+    def __init__(self, api_key: str):
+        """Initialize AgentMail client"""
+        self.client = AgentMail(api_key=api_key)
+        self.inbox_id = "rentalagent@agentmail.to"
+        logger.warning(f"AgentMail initialized: {self.inbox_id}")
+    
+    def get_inbox_details(self) -> Dict[str, Any]:
+        """Get inbox details"""
+        try:
+            inbox = self.client.inboxes.get(inbox_id=self.inbox_id)
+            return {
+                "inbox_id": inbox.inbox_id,
+                "created_at": getattr(inbox, 'created_at', None),
+                "status": "active"
+            }
+        except Exception as e:
+            logger.warning(f"Could not fetch inbox details: {e}")
+            return {"inbox_id": self.inbox_id, "status": "unknown"}
+    
+    def list_threads(self) -> List[Dict[str, Any]]:
+        """List all threads in the inbox"""
+        try:
+            threads_response = self.client.inboxes.threads.list(inbox_id=self.inbox_id)
+            threads = threads_response.threads if hasattr(threads_response, 'threads') else threads_response
+
+            inbox_threads = []
+            for thread in threads:
+                inbox_threads.append({
+                    "thread_id": thread.thread_id,
+                    "subject": getattr(thread, 'subject', 'N/A'),
+                    "updated_at": thread.updated_at,
+                    "message_count": getattr(thread, 'message_count', 0)
+                })
+
+            logger.warning(f"Found {len(inbox_threads)} threads")
+            return inbox_threads
             
-            def send(self, inbox_id, to, subject, text=None, html=None, labels=None, **kwargs):
-                """Send a message using the real AgentMail API"""
-                print(f"📧 REAL SEND: inbox_id={inbox_id}, to={to}, subject={subject}")
-                
-                # Create the request object
-                request = SendMessageRequest(
-                    inbox_id=inbox_id,
-                    to=to,
-                    subject=subject,
-                    text=text,
-                    html=html,
-                    labels=labels or []
-                )
-                
-                # Make the actual API call using the correct method
-                try:
-                    # Try different possible methods
-                    if hasattr(self._client_wrapper, 'post'):
-                        response = self._client_wrapper.post("/messages/send", json=request.model_dump())
-                    elif hasattr(self._client_wrapper, 'request'):
-                        response = self._client_wrapper.request("POST", "/messages/send", json=request.model_dump())
-                    elif hasattr(self._client_wrapper, '_make_request'):
-                        response = self._client_wrapper._make_request("POST", "/messages/send", request.model_dump())
-                    else:
-                        # Fallback: try to use httpx directly
-                        import httpx
-                        response = httpx.post(
-                            f"{self._client_wrapper._base_url}/messages/send",
-                            headers=self._client_wrapper._headers,
-                            json=request.model_dump()
-                        )
-                        response = response.json()
-                except Exception as e:
-                    print(f"API call failed: {e}")
-                    # Return a mock response for now
-                    response = type('Response', (), {'message_id': 'real_api_call_attempted'})()
-                
-                return response
+        except Exception as e:
+            logger.error(f"Could not list threads: {e}")
+            return []
+    
+    def get_thread_messages(self, thread_id: str) -> List[MessageData]:
+        """Get all messages in a thread"""
+        try:
+            thread = self.client.inboxes.threads.get(inbox_id=self.inbox_id, thread_id=thread_id)
+            messages = getattr(thread, 'messages', [])
             
-            def reply(self, inbox_id, message_id, text=None, html=None, **kwargs):
-                """Reply to a message using the real AgentMail API"""
-                print(f"📧 REAL REPLY: inbox_id={inbox_id}, message_id={message_id}")
-                
-                # Create the request object
-                request = ReplyToMessageRequest(
-                    inbox_id=inbox_id,
-                    message_id=message_id,
-                    text=text,
-                    html=html
-                )
-                
-                # Make the actual API call using the correct method
-                try:
-                    # Try different possible methods
-                    if hasattr(self._client_wrapper, 'post'):
-                        response = self._client_wrapper.post("/messages/reply", json=request.model_dump())
-                    elif hasattr(self._client_wrapper, 'request'):
-                        response = self._client_wrapper.request("POST", "/messages/reply", json=request.model_dump())
-                    elif hasattr(self._client_wrapper, '_make_request'):
-                        response = self._client_wrapper._make_request("POST", "/messages/reply", request.model_dump())
-                    else:
-                        # Fallback: try to use httpx directly
-                        import httpx
-                        response = httpx.post(
-                            f"{self._client_wrapper._base_url}/messages/reply",
-                            headers=self._client_wrapper._headers,
-                            json=request.model_dump()
-                        )
-                        response = response.json()
-                except Exception as e:
-                    print(f"API call failed: {e}")
-                    # Return a mock response for now
-                    response = type('Response', (), {'message_id': 'real_api_call_attempted'})()
-                
-                return response
+            message_data = []
+            for msg in messages:
+                message_data.append(MessageData(
+                    message_id=getattr(msg, 'message_id', 'N/A'),
+                    thread_id=thread_id,
+                    from_email=getattr(msg, 'from_', 'N/A'),
+                    to_emails=getattr(msg, 'to', []),
+                    subject=getattr(msg, 'subject', 'N/A'),
+                    text_content=getattr(msg, 'text', 'N/A'),
+                    html_content=getattr(msg, 'html', None),
+                    timestamp=getattr(msg, 'timestamp', datetime.now()),
+                    labels=getattr(msg, 'labels', [])
+                ))
             
-            def update(self, inbox_id, message_id, add_labels=None, remove_labels=None, **kwargs):
-                """Update message labels using the real AgentMail API"""
-                print(f"📧 REAL UPDATE: inbox_id={inbox_id}, message_id={message_id}")
-                
-                # Create the request object
-                request = UpdateMessageRequest(
-                    inbox_id=inbox_id,
-                    message_id=message_id,
-                    add_labels=add_labels or [],
-                    remove_labels=remove_labels or []
-                )
-                
-                # Make the actual API call using the correct method
-                try:
-                    # Try different possible methods
-                    if hasattr(self._client_wrapper, 'patch'):
-                        response = self._client_wrapper.patch("/messages/update", json=request.model_dump())
-                    elif hasattr(self._client_wrapper, 'request'):
-                        response = self._client_wrapper.request("PATCH", "/messages/update", json=request.model_dump())
-                    elif hasattr(self._client_wrapper, '_make_request'):
-                        response = self._client_wrapper._make_request("PATCH", "/messages/update", request.model_dump())
-                    else:
-                        # Fallback: try to use httpx directly
-                        import httpx
-                        response = httpx.patch(
-                            f"{self._client_wrapper._base_url}/messages/update",
-                            headers=self._client_wrapper._headers,
-                            json=request.model_dump()
-                        )
-                        response = response.json()
-                except Exception as e:
-                    print(f"API call failed: {e}")
-                    # Return a mock response for now
-                    response = type('Response', (), {'message_id': 'real_api_call_attempted'})()
-                
-                return response
-        
-        # Add the real messages client
-        client.messages = RealMessagesClient(client._client_wrapper)
-        print("✅ Added REAL messages API implementation to client")
+            # Messages retrieved successfully
+            return message_data
+            
+        except Exception as e:
+            logger.error(f"Could not get messages from thread {thread_id}: {e}")
+            return []
+    
+    def send_message(self, to_emails: List[str], subject: str, text_content: str, 
+                    html_content: Optional[str] = None, labels: List[str] = None) -> bool:
+        """Send a new message"""
+        try:
+            request = SendMessageRequest(
+                inbox_id=self.inbox_id,
+                to=to_emails,
+                subject=subject,
+                text=text_content,
+                html=html_content,
+                labels=labels or []
+            )
+            
+            response = self.client.inboxes.messages.send(**request.model_dump())
+            logger.warning(f"Message sent: {getattr(response, 'message_id', 'Unknown ID')}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to send message: {e}")
+            return False
+    
+    def reply_to_message(self, message_id: str, text_content: str, 
+                        html_content: Optional[str] = None) -> bool:
+        """Reply to an existing message"""
+        try:
+            request = ReplyToMessageRequest(
+                inbox_id=self.inbox_id,
+                message_id=message_id,
+                text=text_content,
+                html=html_content
+            )
+            
+            response = self.client.inboxes.messages.reply(**request.model_dump())
+            logger.warning(f"Reply sent: {getattr(response, 'message_id', 'Unknown ID')}")
+            
+            # Update labels
+            self.update_message_labels(message_id, add_labels=["replied"], remove_labels=["unreplied"])
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to reply to message {message_id}: {e}")
+            return False
+    
+    def update_message_labels(self, message_id: str, add_labels: List[str] = None, 
+                            remove_labels: List[str] = None) -> bool:
+        """Update message labels"""
+        try:
+            request = UpdateMessageRequest(
+                inbox_id=self.inbox_id,
+                message_id=message_id,
+                add_labels=add_labels or [],
+                remove_labels=remove_labels or []
+            )
+            
+            self.client.inboxes.messages.update(**request.model_dump())
+            # Labels updated
+            return True
+            
+        except Exception as e:
+            logger.warning(f"Label update failed for message {message_id}: {e}")
+            return False
 
-def send_auto_reply(to_email, original_subject, original_body, message_id=None):
-    """Send an automatic reply email using the correct AgentMail API"""
-    try:
+class RentalCommunicationAgent:
+    """Handles autonomous rental communication"""
+    
+    def __init__(self, agent_mail_manager: AgentMailManager):
+        self.mail_manager = agent_mail_manager
+        self.conversations: Dict[str, ConversationContext] = {}
+        logger.warning("Rental Communication Agent initialized")
+    
+    def generate_auto_reply(self, original_message: MessageData) -> tuple[str, str]:
+        """Generate auto-reply content"""
         # Extract email address from "Name <email>" format
-        if '<' in to_email and '>' in to_email:
-            email_address = to_email.split('<')[1].split('>')[0].strip()
+        from_email = original_message.from_email
+        if '<' in from_email and '>' in from_email:
+            email_address = from_email.split('<')[1].split('>')[0].strip()
         else:
-            email_address = to_email.strip()
+            email_address = from_email.strip()
         
-        # Create auto-reply content
-        reply_subject = f"Re: {original_subject}"
+        reply_subject = f"Re: {original_message.subject}"
         
         # Text version
         text_body = f"""Hello! This is rentAI, your AI rental assistant.
 
-Thank you for reaching out to rental@agentmail.to. I've received your message:
+Thank you for reaching out to rentalagent@agentmail.to. I've received your message:
 
-Subject: {original_subject}
-Message: {original_body}
+Subject: {original_message.subject}
+Message: {original_message.text_content}
 
 I'm here to help you find the perfect rental property. I can assist you with:
 - Property searches based on your budget and preferences
@@ -179,7 +211,7 @@ Please reply with your rental requirements and I'll help you find suitable prope
 Best regards,
 rentAI
 AI Rental Assistant
-rental@agentmail.to
+rentalagent@agentmail.to
 
 ---
 This is an automated response from rentAI."""
@@ -187,10 +219,10 @@ This is an automated response from rentAI."""
         # HTML version
         html_body = f"""<p>Hello! This is <strong>rentAI</strong>, your AI rental assistant.</p>
 
-<p>Thank you for reaching out to rental@agentmail.to. I've received your message:</p>
+<p>Thank you for reaching out to rentalagent@agentmail.to. I've received your message:</p>
 
-<p><strong>Subject:</strong> {original_subject}<br>
-<strong>Message:</strong> {original_body}</p>
+<p><strong>Subject:</strong> {original_message.subject}<br>
+<strong>Message:</strong> {original_message.text_content}</p>
 
 <p>I'm here to help you find the perfect rental property. I can assist you with:</p>
 <ul>
@@ -205,188 +237,127 @@ This is an automated response from rentAI."""
 <p>Best regards,<br>
 <strong>rentAI</strong><br>
 AI Rental Assistant<br>
-rental@agentmail.to</p>
+rentalagent@agentmail.to</p>
 
 <hr>
 <p><em>This is an automated response from rentAI.</em></p>"""
         
-        print(f"📤 Attempting to send auto-reply to: {email_address}")
-        
-        # Use the CORRECT AgentMail API structure
-        if hasattr(client, 'inboxes') and hasattr(client.inboxes, 'messages'):
-            print("✅ Using CORRECT AgentMail inboxes.messages API")
-            
-            if message_id:
-                # Reply to the message using the CORRECT API
-                print(f"📧 Replying to message: {message_id}")
-                try:
-                    sent_message = client.inboxes.messages.reply(
-                        inbox_id=existing_inbox_id,
-                        message_id=message_id,
-                        text=text_body,
-                        html=html_body
-                    )
-                    print(f"✅ Reply sent successfully: {getattr(sent_message, 'message_id', 'Unknown ID')}")
-                    
-                    # Update labels as shown in documentation
-                    try:
-                        client.inboxes.messages.update(
-                            inbox_id=existing_inbox_id,
-                            message_id=message_id,
-                            add_labels=["replied"],
-                            remove_labels=["unreplied"]
-                        )
-                        print("✅ Labels updated successfully")
-                    except Exception as e:
-                        print(f"⚠️ Label update failed: {e}")
-                    
-                    return True
-                except Exception as e:
-                    print(f"⚠️ Reply method failed: {e}")
-            
-            # Fallback: send new message using CORRECT API
-            print(f"📧 Sending new message...")
-            try:
-                sent_message = client.inboxes.messages.send(
-                    inbox_id=existing_inbox_id,
-                    to=[email_address],
-                    subject=reply_subject,
-                    text=text_body,
-                    html=html_body
-                )
-                print(f"✅ Message sent successfully: {getattr(sent_message, 'message_id', 'Unknown ID')}")
-                return True
-            except Exception as e:
-                print(f"⚠️ Send method failed: {e}")
-        else:
-            print("❌ Inboxes messages API not available")
-            
-    except Exception as e:
-        print(f"❌ Error sending auto-reply: {e}")
-        return False
-
-# 1️⃣ Connect to existing inbox
-print("📬 Connecting to existing inbox...")
-existing_inbox_id = "rental@agentmail.to"
-print(f"✅ Connected to inbox: {existing_inbox_id}")
-
-# Get inbox details
-try:
-    inbox = client.inboxes.get(inbox_id=existing_inbox_id)
-print("Inbox details:", inbox)
-except Exception as e:
-    print(f"⚠️ Could not fetch inbox details: {e}")
-    # Create a mock inbox object for the existing inbox
-    class MockInbox:
-        def __init__(self, inbox_id):
-            self.inbox_id = inbox_id
-    inbox = MockInbox(existing_inbox_id)
-
-# 2️⃣ List all threads for the existing inbox
-print(f"\n🧵 Listing threads for inbox {existing_inbox_id}...")
-try:
-    # List all threads and filter manually
-    threads_response = client.threads.list()
-    threads = threads_response.threads if hasattr(threads_response, 'threads') else threads_response
-    threads = [t for t in threads if getattr(t, "inbox_id", None) == existing_inbox_id]
-except Exception as e:
-    print(f"⚠️ Could not list threads: {e}")
-    threads = []
-
-if not threads:
-    print(f"No threads found in inbox {existing_inbox_id}.")
-else:
-    print(f"Found {len(threads)} thread(s) in inbox {existing_inbox_id}:")
-    for t in threads:
-            print(f"Thread ID: {t.thread_id}, Subject: {getattr(t, 'subject', 'N/A')}, Updated at: {t.updated_at}")
-
-# 3️⃣ Read messages in each thread
-print("\n✉️ Reading messages in each thread...")
-for t in threads:
-    try:
-        # Try different API methods to find the correct one
-        # Skip the custom messages client for reading - use original method
-        if hasattr(client, 'threads') and hasattr(client.threads, 'messages'):
-            messages_response = client.threads.messages.list(thread_id=t.thread_id)
-        else:
-            # Try to get thread details which might include messages
-            thread_details = client.threads.get(thread_id=t.thread_id)
-            messages = getattr(thread_details, 'messages', [])
-            messages_response = type('obj', (object,), {'messages': messages})()
-        
-        messages = messages_response.messages if hasattr(messages_response, 'messages') else messages_response
-        
-    print(f"\nMessages in Thread {t.thread_id}:")
-        if messages:
-            for i, m in enumerate(messages):
-                print(f"\n--- Message {i+1} ---")
-                print(f"Message attributes: {[attr for attr in dir(m) if not attr.startswith('_')]}")
-                
-                # Extract email details using the correct attribute names
-                from_email = getattr(m, 'from_', 'N/A')
-                subject = getattr(m, 'subject', 'N/A')
-                text_body = getattr(m, 'text', 'N/A')
-                html_body = getattr(m, 'html', 'N/A')
-                timestamp = getattr(m, 'timestamp', 'N/A')
-                message_id = getattr(m, 'message_id', 'N/A')
-                to_recipients = getattr(m, 'to', [])
-                
-                print(f"From: {from_email}")
-                print(f"To: {', '.join(to_recipients) if to_recipients else 'N/A'}")
-                print(f"Subject: {subject}")
-                print(f"Timestamp: {timestamp}")
-                print(f"Message ID: {message_id}")
-                print(f"Text Body: {text_body[:200] + '...' if len(str(text_body)) > 200 else text_body}")
-                if html_body and html_body != text_body:
-                    print(f"HTML Body: {html_body[:200] + '...' if len(str(html_body)) > 200 else html_body}")
-                
-                # Auto-reply functionality
-                print(f"\n🤖 Sending auto-reply...")
-                try:
-                    auto_reply_sent = send_auto_reply(from_email, subject, text_body, message_id)
-                    if auto_reply_sent:
-                        print(f"✅ Auto-reply sent successfully!")
-                    else:
-                        print(f"⚠️ Auto-reply failed")
-                except Exception as e:
-                    print(f"❌ Auto-reply error: {e}")
-        else:
-            print("No messages found in this thread")
-    except Exception as e:
-        print(f"⚠️ Could not read messages from thread {t.thread_id}: {e}")
-        print(f"Available client attributes: {[attr for attr in dir(client) if not attr.startswith('_')]}")
-
-# 4️⃣ List existing drafts (since we can't create new ones easily)
-print("\n📝 Checking existing drafts...")
-try:
-    drafts_response = client.drafts.list()
-    drafts = drafts_response.drafts if hasattr(drafts_response, 'drafts') else drafts_response
+        return text_body, html_body
     
-    if drafts:
-        print(f"Found {len(drafts)} draft(s):")
-        for draft in drafts:
-            print(f"- Draft ID: {getattr(draft, 'draft_id', 'N/A')}, Subject: {getattr(draft, 'subject', 'N/A')}")
-    else:
-        print("No drafts found")
+    def process_incoming_message(self, message: MessageData) -> bool:
+        """Process an incoming message and send auto-reply"""
+        try:
+            # Generate auto-reply
+            text_body, html_body = self.generate_auto_reply(message)
+            
+            # Send reply
+            success = self.mail_manager.reply_to_message(
+                message_id=message.message_id,
+                text_content=text_body,
+                html_content=html_body
+            )
+            
+            if success:
+                logger.warning(f"Auto-reply sent to {message.from_email}")
+                return True
+            else:
+                logger.error(f"Failed to send auto-reply to {message.from_email}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error processing message: {e}")
+            return False
+    
+    def update_conversation_context(self, thread_id: str, message: MessageData):
+        """Update conversation context"""
+        if thread_id not in self.conversations:
+            self.conversations[thread_id] = ConversationContext(
+                property_id=None,
+                user_preferences={},
+                conversation_history=[],
+                current_status="initial",
+                last_updated=datetime.now()
+            )
         
-except Exception as e:
-    print(f"⚠️ Could not list drafts: {e}")
+        self.conversations[thread_id].conversation_history.append(message)
+        self.conversations[thread_id].last_updated = datetime.now()
 
-# 5️⃣ Show webhook capabilities
-print("\n🔗 Webhook capabilities:")
-print("- Webhook endpoint: http://localhost:5000/webhook")
-print("- Supported events: message.received, thread.created")
-print("- To set up webhooks, configure in AgentMail dashboard")
+class RentalOrchestrator:
+    """Main orchestrator for the rental assistant system"""
+    
+    def __init__(self):
+        """Initialize the rental orchestrator"""
+        load_dotenv()
+        api_key = os.getenv("AGENTMAIL_API_KEY")
+        
+        if not api_key:
+            raise ValueError("❌ AGENTMAIL_API_KEY not found in .env")
+        
+        self.mail_manager = AgentMailManager(api_key)
+        self.communication_agent = RentalCommunicationAgent(self.mail_manager)
+        logger.warning("Rental Orchestrator initialized")
+    
+    def run_email_monitoring(self):
+        """Main loop for monitoring and processing emails"""
+        logger.warning("Starting email monitoring...")
+        
+        # List and process threads
+        threads = self.mail_manager.list_threads()
+        
+        if not threads:
+            logger.warning("No threads found")
+            return
+        
+        logger.warning(f"Processing {len(threads)} threads...")
+        
+        for thread_info in threads:
+            thread_id = thread_info["thread_id"]
+            
+            # Get messages in thread
+            messages = self.mail_manager.get_thread_messages(thread_id)
+            
+            if not messages:
+                continue
+            
+            # Process each message
+            for message in messages:
+                # Update conversation context
+                self.communication_agent.update_conversation_context(thread_id, message)
+                
+                # Process and send auto-reply
+                self.communication_agent.process_incoming_message(message)
+        
+        logger.warning("Email monitoring complete")
+    
+    def get_conversation_summary(self) -> Dict[str, Any]:
+        """Get summary of all conversations"""
+        return {
+            "total_conversations": len(self.communication_agent.conversations),
+            "active_threads": len(self.mail_manager.list_threads()),
+            "conversations": {
+                thread_id: {
+                    "status": context.current_status,
+                    "message_count": len(context.conversation_history),
+                    "last_updated": context.last_updated.isoformat(),
+                    "property_id": context.property_id
+                }
+                for thread_id, context in self.communication_agent.conversations.items()
+            }
+        }
 
-# 6️⃣ List all inboxes (for verification)
-print(f"\n📋 Listing all inboxes...")
-try:
-    inboxes_response = client.inboxes.list()
-    all_inboxes = inboxes_response.inboxes if hasattr(inboxes_response, 'inboxes') else inboxes_response
-    print(f"Found {len(all_inboxes)} inbox(es):")
-    for inbox_item in all_inboxes:
-        print(f"- Inbox ID: {inbox_item.inbox_id}, Created: {getattr(inbox_item, 'created_at', 'N/A')}")
-except Exception as e:
-    print(f"⚠️ Could not list inboxes: {e}")
+def main():
+    """Main entry point"""
+    try:
+        orchestrator = RentalOrchestrator()
+        orchestrator.run_email_monitoring()
+        
+        # Print summary
+        summary = orchestrator.get_conversation_summary()
+        logger.warning(f"Session Summary: {summary}")
+        
+    except Exception as e:
+        logger.error(f"Fatal error: {e}")
+        raise
 
-print(f"\n🎉 AgentMail integration complete for inbox: {existing_inbox_id}")
+if __name__ == "__main__":
+    main()
