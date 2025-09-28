@@ -23,8 +23,8 @@ from business_logic import handle_user_query
 genai.configure(api_key=os.getenv("API_KEY"))
 
 agent = Agent(
-    name="AhaanShahRealEstate",
-    seed="TestingMhacksAhaanShah",
+    name="RaymondRealEstate",
+    seed="TestingMhacksRaymond",
     port=8000,
     mailbox=True
 )
