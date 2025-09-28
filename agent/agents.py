@@ -23,9 +23,9 @@ from business_logic import handle_user_query
 genai.configure(api_key=os.getenv("API_KEY"))
 
 agent = Agent(
-    name="AhaanShahRealEstate",
-    seed="TestingMhacksAhaanShah",
-    port=8000,
+    name="forestRealEstate",
+    seed="TestingMhacksforest",
+    port=3001,
     mailbox=True
 )
 chat_proto = Protocol(spec=chat_protocol_spec)

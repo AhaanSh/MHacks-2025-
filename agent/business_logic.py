@@ -1,8 +1,10 @@
 """
 Business logic handler with rental property filtering using LLM + rentals.csv
+Includes per-user context memory and operator support for bedrooms/bathrooms.
 """
+import os 
 import pandas as pd
-import os
+
 
 # Load rentals.csv once when this module is imported
 CSV_PATH = os.path.join(os.path.dirname(__file__), "rentals.csv")
@@ -12,10 +14,14 @@ except Exception as e:
     rentals_df = pd.DataFrame()
     print(f"Error loading rentals.csv: {e}")
 
+# --- In-memory context (resets when program restarts) ---
+user_context = {}  # maps sender -> last used filters
+
 
 def handle_user_query(sender: str, understood_query: dict) -> str:
     """
     Handles user queries using CSV rental data + LLM analysis.
+    Maintains per-user context for progressive filtering.
     """
     original_message = understood_query["original_query"]
     llm_analysis = understood_query["llm_analysis"]
@@ -24,9 +30,31 @@ def handle_user_query(sender: str, understood_query: dict) -> str:
     if rentals_df.empty:
         return "Sorry, I couldn't load the rentals database. Please try again later."
 
+    # Handle explicit reset command
+    if "reset" in original_message.lower():
+        user_context[sender] = {}
+        return "Your search filters have been reset."
+
     # If the LLM returned structured JSON with property intent
-    if isinstance(llm_analysis, dict) and llm_analysis.get("intent") == "property_search":
-        return handle_rental_query(original_message, llm_analysis)
+    if (
+        isinstance(llm_analysis, dict)
+        and llm_analysis.get("intent") == "property_search"
+    ):
+        prev_filters = user_context.get(sender, {})
+        new_filters = llm_analysis.get("key_info", {})
+
+        # Merge filters: keep old ones unless new ones overwrite them
+        merged_filters = {
+            **prev_filters,
+            **{k: v for k, v in new_filters.items() if v is not None},
+        }
+
+        # Save updated context
+        user_context[sender] = merged_filters
+
+        return handle_rental_query(
+            original_message, {"key_info": merged_filters}, sender
+        )
 
     # Fallbacks: keyword-based matching if no intent given
     message_lower = original_message.lower()
@@ -36,7 +64,10 @@ def handle_user_query(sender: str, understood_query: dict) -> str:
     elif any(word in message_lower for word in ["book", "schedule", "appointment"]):
         return handle_booking_query(original_message, llm_analysis)
 
-    elif any(word in message_lower for word in ["problem", "issue", "complaint", "not working"]):
+    elif any(
+        word in message_lower
+        for word in ["problem", "issue", "complaint", "not working"]
+    ):
         return handle_support_query(original_message, llm_analysis)
 
     elif isinstance(llm_analysis, dict) and llm_analysis.get("urgency") == "high":
@@ -46,26 +77,31 @@ def handle_user_query(sender: str, understood_query: dict) -> str:
         return handle_general_query(original_message, llm_analysis)
 
 
-def handle_rental_query(original_message: str, llm_analysis: dict) -> str:
+def apply_operator_filter(df, column, value, operator):
+    """Apply filter with operator for numeric columns."""
+    if value is None or column not in df.columns:
+        return df
+    if operator is None:
+        operator = ">="
+    if operator == ">=":
+        return df[df[column] >= value]
+    if operator == "<=":
+        return df[df[column] <= value]
+    if operator == ">":
+        return df[df[column] > value]
+    if operator == "<":
+        return df[df[column] < value]
+    if operator == "==":
+        return df[df[column] == value]
+    return df
+
+
+def handle_rental_query(original_message: str, llm_analysis: dict, sender: str) -> str:
     """
-    Handles rental property queries by filtering rentals.csv step by step
+    Handles rental property queries by filtering rentals.csv step by step.
+    Reminds user of current active filters.
     """
-    filters = {}
-    key_info = llm_analysis.get("key_info", {}) if isinstance(llm_analysis, dict) else {}
-
-    # Extract filters
-    if key_info.get("budget_min") is not None:
-        filters["budget_min"] = key_info["budget_min"]
-    if key_info.get("budget_max") is not None:
-        filters["budget_max"] = key_info["budget_max"]
-
-    if key_info.get("bedrooms") is not None:
-        filters["bedrooms"] = key_info["bedrooms"]
-    if key_info.get("bathrooms") is not None:
-        filters["bathrooms"] = key_info["bathrooms"]
-
-    if key_info.get("location"):
-        filters["location"] = key_info["location"]
+    filters = llm_analysis.get("key_info", {}) if isinstance(llm_analysis, dict) else {}
 
     # Start with full dataset
     df = rentals_df.copy()
@@ -76,19 +112,16 @@ def handle_rental_query(original_message: str, llm_analysis: dict) -> str:
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
     # Apply filters step by step
-    if "budget_min" in filters and "price" in df.columns:
+    if filters.get("budget_min") is not None:
         df = df[df["price"] >= filters["budget_min"]]
 
-    if "budget_max" in filters and "price" in df.columns:
+    if filters.get("budget_max") is not None:
         df = df[df["price"] <= filters["budget_max"]]
 
-    if "bedrooms" in filters and "bedrooms" in df.columns:
-        df = df[df["bedrooms"] >= filters["bedrooms"]]
+    df = apply_operator_filter(df, "bedrooms", filters.get("bedrooms"), filters.get("bedroom_operator"))
+    df = apply_operator_filter(df, "bathrooms", filters.get("bathrooms"), filters.get("bathroom_operator"))
 
-    if "bathrooms" in filters and "bathrooms" in df.columns:
-        df = df[df["bathrooms"] >= filters["bathrooms"]]
-
-    if "location" in filters:
+    if filters.get("location"):
         loc = filters["location"]
         conds = []
         for col in ["state", "city", "formattedAddress"]:
@@ -99,17 +132,37 @@ def handle_rental_query(original_message: str, llm_analysis: dict) -> str:
 
     # If nothing found
     if df.empty:
-        return "Sorry, I couldn’t find any properties matching your request."
+        return "Sorry, I couldn't find any properties matching your request."
+
+    # Build filter summary to remind user
+    filter_summary = []
+    if filters.get("location"):
+        filter_summary.append(f"Location: {filters['location']}")
+    if filters.get("budget_min") is not None:
+        filter_summary.append(f"Min budget: ${filters['budget_min']}")
+    if filters.get("budget_max") is not None:
+        filter_summary.append(f"Max budget: ${filters['budget_max']}")
+    if filters.get("bedrooms") is not None:
+        filter_summary.append(f"Bedrooms {filters.get('bedroom_operator', '>=')} {filters['bedrooms']}")
+    if filters.get("bathrooms") is not None:
+        filter_summary.append(f"Bathrooms {filters.get('bathroom_operator', '>=')} {filters['bathrooms']}")
+
+    filter_summary_text = ", ".join(filter_summary) if filter_summary else "No active filters"
 
     # Format top 5 results
     results = df.head(5).to_dict(orient="records")
-    response_lines = ["Here are some properties that match your request:\n"]
+    response_lines = [f"Here are some properties that match your request (Active filters: {filter_summary_text}):\n"]
     for r in results:
         address = r.get("formattedAddress") or f"{r.get('city', 'Unknown')}, {r.get('state', '')}"
+        agent_name = r.get("agent_name", "Unknown Agent")
+        agent_phone = r.get("agent_phone", "No phone")
+        agent_email = r.get("agent_email", "No email")
+
         line = (
             f"- {address} "
             f"| ${r.get('price', 'N/A')} "
-            f"| {r.get('bedrooms', '?')} bed / {r.get('bathrooms', '?')} bath"
+            f"| {r.get('bedrooms', '?')} bed / {r.get('bathrooms', '?')} bath "
+            f"| Agent: {agent_name}, Phone: {agent_phone}, Email: {agent_email}"
         )
         response_lines.append(line)
 
