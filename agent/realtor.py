@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from agentmail import AgentMail
 
 # Load API key
-load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 api_key = os.getenv("AGENTMAIL_API_KEY")
 
 if not api_key:
@@ -58,13 +58,25 @@ def send_email_to_realtor(property_info, subject: str, body: str):
         
         print(f"📧 Sending email to {agent_email} about {property_address}")
 
-        response = client.messages.send(
-            inbox_id="rentalagent@agentmail.to",
-            to=[agent_email],
-            subject=subject,
-            text=body,
-            html=f"<p>{body}</p>"
-        )
+        # Use the correct API structure
+        if hasattr(client, "inboxes") and hasattr(client.inboxes, "messages"):
+            response = client.inboxes.messages.send(
+                inbox_id=existing_inbox_id,
+                to=[agent_email],
+                subject=subject,
+                text=body,
+                html=f"<p>{body}</p>"
+            )
+        elif hasattr(client, "messages"):
+            response = client.messages.send(
+                inbox_id=existing_inbox_id,
+                to=[agent_email],
+                subject=subject,
+                text=body,
+                html=f"<p>{body}</p>"
+            )
+        else:
+            return "❌ No valid AgentMail messages client available."
 
         # Mark this email as sent
         sent_emails.add(email_hash)
