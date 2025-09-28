@@ -1,68 +1,240 @@
-:root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+/* Design.md inspired color system - minimalist, warm, and trustworthy
+Using design.md specifications: #f5f5f5 background, #333333 text, #ff9966 orange, #cc9900 gold
+*/
 
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
-}
-
-body {
-  margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
-}
-
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
-}
-
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
-  cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
-}
-
-@media (prefers-color-scheme: light) {
+@layer base {
   :root {
-    color: #213547;
-    background-color: #ffffff;
+    --background: 210 20% 96%; /* Light gray #f5f5f5 equivalent */
+    --foreground: 0 0% 20%; /* Dark gray #333333 equivalent */
+
+    --card: 0 0% 100%; /* Pure white for cards */
+    --card-foreground: 0 0% 20%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 20%;
+
+    /* Design.md specified colors */
+    --primary: 18 100% 70%; /* #ff9966 muted orange */
+    --primary-foreground: 0 0% 100%;
+    --primary-hover: 18 90% 65%;
+
+    --success: 142 71% 45%; /* Keep existing green */
+    --success-foreground: 0 0% 100%;
+    --success-light: 142 71% 95%;
+
+    --warning: 45 100% 40%; /* #cc9900 soft gold */
+    --warning-foreground: 0 0% 100%;
+    --warning-light: 45 100% 95%;
+
+    --accent: 45 100% 40%; /* #cc9900 soft gold as accent */
+    --accent-foreground: 0 0% 100%;
+    --accent-light: 45 100% 95%;
+
+    --secondary: 210 20% 94%;
+    --secondary-foreground: 0 0% 20%;
+
+    --muted: 210 15% 91%; /* Lighter muted gray */
+    --muted-foreground: 0 0% 40%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 210 20% 88%;
+    --input: 210 20% 88%;
+    --ring: 18 100% 70%;
+
+    --radius: 0.75rem; /* Slightly larger radius for modern look */
+
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 0 0% 20%;
+    --sidebar-primary: 18 100% 70%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 45 100% 40%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 210 20% 88%;
+    --sidebar-ring: 18 100% 70%;
   }
-  a:hover {
-    color: #747bff;
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
   }
-  button {
-    background-color: #f9f9f9;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    background: transparent;
+  }
+}
+
+/* Design.md inspired component styles */
+@layer components {
+  /* Card-based layouts with clean shadows - mymind.com inspired */
+  .card-minimal {
+    @apply bg-card/90 backdrop-blur-sm rounded-lg border-0 shadow-lg hover:shadow-xl hover:bg-card/95 transition-all duration-300;
+  }
+  
+  /* Warm, subtle hover effects */
+  .hover-warm {
+    @apply hover:bg-primary/5 transition-colors duration-200;
+  }
+  
+  /* Clean typography hierarchy */
+  .text-heading {
+    @apply text-foreground font-semibold leading-tight;
+  }
+  
+  .text-body {
+    @apply text-foreground/80 leading-relaxed;
+  }
+  
+  .text-muted {
+    @apply text-muted-foreground;
+  }
+  
+  /* Elegant search bar styling - prominent and central */
+  .search-focus {
+    @apply focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all duration-200 rounded-lg;
+  }
+  
+  /* Grid layout for card-based interface */
+  .property-grid {
+    @apply grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6;
+  }
+  
+  /* Featured listings with high-quality imagery focus */
+  .featured-card {
+    @apply bg-card/90 backdrop-blur-sm rounded-lg overflow-hidden shadow-lg hover:shadow-xl hover:bg-card/95 transition-all duration-300 cursor-pointer;
+  }
+}
+
+/* RentAI Dashboard Animations */
+@layer utilities {
+  .pulse-active {
+    @apply animate-pulse;
+    animation-duration: 2s;
+  }
+
+  .slide-in-right {
+    animation: slideInRight 0.5s ease-out;
+  }
+
+  .fade-in-up {
+    animation: fadeInUp 0.3s ease-out;
+  }
+
+  .bounce-in {
+    animation: bounceIn 0.6s ease-out;
+  }
+
+  .status-pulse {
+    animation: statusPulse 2s infinite;
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes bounceIn {
+  0% {
+    transform: scale(0.3);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  70% {
+    transform: scale(0.9);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes statusPulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* Confetti animation */
+.confetti {
+  animation: confetti 3s ease-in-out;
+}
+
+@keyframes confetti {
+  0% {
+    transform: translateY(-100vh) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(100vh) rotate(360deg);
+    opacity: 0;
   }
 }
