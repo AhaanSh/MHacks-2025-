@@ -217,6 +217,7 @@ export class MCPService {
    */
   static async scheduleTour(
     propertyId: string, 
+    propertyAddress?: string,
     preferredDate?: string
   ): Promise<ActionResponse> {
     try {
@@ -227,6 +228,7 @@ export class MCPService {
         },
         body: JSON.stringify({ 
           propertyId,
+          propertyAddress,
           preferredDate: preferredDate || new Date().toISOString(),
         }),
       });
@@ -252,6 +254,7 @@ export class MCPService {
    */
   static async setupOutreach(
     propertyId: string, 
+    propertyAddress?: string,
     customMessage?: string
   ): Promise<ActionResponse> {
     try {
@@ -262,6 +265,7 @@ export class MCPService {
         },
         body: JSON.stringify({ 
           propertyId,
+          propertyAddress,
           customMessage: customMessage || "I'm interested in learning more about this property.",
         }),
       });

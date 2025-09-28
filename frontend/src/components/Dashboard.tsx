@@ -145,7 +145,7 @@ export const Dashboard = ({ onNavigateToChat, isConnected }: DashboardProps) => 
             </div>
             
             {/* Recent Properties */}
-            <div className="card-minimal p-6">
+            <div className="card-minimal p-6 min-h-[400px]">
               <h3 className="text-xl font-semibold text-heading mb-4">Recent Properties</h3>
               {properties.length > 0 ? (
                 <div className="space-y-4">
@@ -191,32 +191,6 @@ export const Dashboard = ({ onNavigateToChat, isConnected }: DashboardProps) => 
               <ActivityFeed />
             </div>
             
-            {/* Quick Actions */}
-            <div className="card-minimal p-6">
-              <h3 className="text-lg font-semibold text-heading mb-4">Quick Actions</h3>
-              <div className="space-y-3">
-                <Button 
-                  onClick={onNavigateToChat} 
-                  className="w-full justify-start" 
-                  variant="ghost"
-                >
-                  <MessageCircle className="w-4 h-4 mr-2" />
-                  New Search
-                </Button>
-                <Button className="w-full justify-start" variant="ghost">
-                  <Calendar className="w-4 h-4 mr-2" />
-                  Schedule Tour
-                </Button>
-                <Button className="w-full justify-start" variant="ghost">
-                  <Star className="w-4 h-4 mr-2" />
-                  View Favorites
-                </Button>
-                <Button className="w-full justify-start" variant="ghost">
-                  <BarChart3 className="w-4 h-4 mr-2" />
-                  View Reports
-                </Button>
-              </div>
-            </div>
           </div>
         </div>
       </div>

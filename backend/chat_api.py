@@ -48,6 +48,7 @@ class MCPResponse(BaseModel):
 
 class ActionRequest(BaseModel):
     propertyId: str
+    propertyAddress: Optional[str] = None
     preferredDate: Optional[str] = None
     customMessage: Optional[str] = None
 
@@ -57,6 +58,9 @@ class ActionResponse(BaseModel):
 
 # In-memory conversation storage for demo
 conversations: Dict[str, List[Dict]] = {}
+
+# In-memory property ID to address mapping
+property_id_to_address: Dict[str, str] = {}
 
 # Demo fallback responses
 DEMO_PROPERTIES = [
@@ -187,14 +191,18 @@ def create_property_info(prop_data: dict) -> PropertyInfo:
     # Add property number to the address display
     display_address = f"Property {property_number}: {address}"
     
+    # Generate property ID and store mapping
+    property_id = str(uuid.uuid4())
+    property_id_to_address[property_id] = display_address
+    
     return PropertyInfo(
-        id=str(uuid.uuid4()),
+        id=property_id,
         address=display_address,
         rent=prop_data.get('rent', 1500),
         bedrooms=prop_data.get('bedrooms', 2),
         bathrooms=prop_data.get('bathrooms', 1.0),
         description=f"Great property at {address}",
-        amenities=["Parking", "Laundry"],
+        amenities=None,
         landlord={"name": "Property Manager", "email": "contact@property.com", "phone": "555-0199"}
     )
 
@@ -305,9 +313,14 @@ async def schedule_tour(request: ActionRequest):
     """
     try:
         preferred_date = request.preferredDate or "next week"
+        # Extract property number and address for message
+        # Try to get address from mapping, fallback to provided address or ID
+        property_address = (request.propertyAddress or 
+                          property_id_to_address.get(request.propertyId) or 
+                          f"Property {request.propertyId}")
         return ActionResponse(
             success=True,
-            message=f"Tour scheduled for property {request.propertyId} on {preferred_date}. You'll receive a confirmation email shortly."
+            message=f"Request for Tour Message sent to Property: {property_address}!"
         )
     except Exception as e:
         return ActionResponse(
@@ -322,9 +335,14 @@ async def setup_outreach(request: ActionRequest):
     """
     try:
         custom_message = request.customMessage or "I'm interested in learning more about this property."
+        # Extract property number and address for message
+        # Try to get address from mapping, fallback to provided address or ID
+        property_address = (request.propertyAddress or 
+                          property_id_to_address.get(request.propertyId) or 
+                          f"Property {request.propertyId}")
         return ActionResponse(
             success=True,
-            message=f"Outreach message sent to landlord for property {request.propertyId}. They should respond within 24 hours."
+            message=f"Expression of Interest Message sent to Property: {property_address}!"
         )
     except Exception as e:
         return ActionResponse(

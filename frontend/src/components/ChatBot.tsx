@@ -53,7 +53,7 @@ export const ChatBot = () => {
     scrollToBottom();
   }, [messages]);
 
-  const handlePropertyAction = async (action: 'favorite' | 'tour' | 'outreach', propertyId: string) => {
+  const handlePropertyAction = async (action: 'favorite' | 'tour' | 'outreach', propertyId: string, propertyAddress?: string) => {
     try {
       let result;
       switch (action) {
@@ -61,10 +61,10 @@ export const ChatBot = () => {
           result = await MCPService.favoriteProperty(propertyId);
           break;
         case 'tour':
-          result = await MCPService.scheduleTour(propertyId);
+          result = await MCPService.scheduleTour(propertyId, propertyAddress);
           break;
         case 'outreach':
-          result = await MCPService.setupOutreach(propertyId);
+          result = await MCPService.setupOutreach(propertyId, propertyAddress);
           break;
       }
       
@@ -227,7 +227,7 @@ export const ChatBot = () => {
                         <Button 
                           size="sm" 
                           className="bg-primary hover:bg-primary/90 text-primary-foreground flex items-center gap-2"
-                          onClick={() => handlePropertyAction('favorite', property.id)}
+                          onClick={() => handlePropertyAction('favorite', property.id, property.address)}
                         >
                           <Heart className="w-4 h-4" />
                           Favorite
@@ -236,7 +236,7 @@ export const ChatBot = () => {
                           size="sm" 
                           variant="outline"
                           className="border-accent/20 hover:bg-accent/5 text-accent flex items-center gap-2"
-                          onClick={() => handlePropertyAction('tour', property.id)}
+                          onClick={() => handlePropertyAction('tour', property.id, property.address)}
                         >
                           <Calendar className="w-4 h-4" />
                           Tour
@@ -245,7 +245,7 @@ export const ChatBot = () => {
                           size="sm" 
                           variant="outline"
                           className="border-primary/20 hover:bg-primary/5 text-primary flex items-center gap-2"
-                          onClick={() => handlePropertyAction('outreach', property.id)}
+                          onClick={() => handlePropertyAction('outreach', property.id, property.address)}
                         >
                           <MessageCircle className="w-4 h-4" />
                           Contact
