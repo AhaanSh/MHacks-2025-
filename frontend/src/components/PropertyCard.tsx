@@ -47,46 +47,58 @@ export const PropertyCard = ({ property }: PropertyCardProps) => {
   return (
     <>
       <Card 
-        className={`transition-all duration-300 hover:shadow-lg cursor-pointer ${isPulseActive ? 'pulse-active' : ''} ${
-          isExpanded ? 'ring-2 ring-primary' : ''
+        className={`featured-card transition-all duration-300 cursor-pointer ${
+          isExpanded ? 'ring-1 ring-primary/20' : ''
         }`}
         onClick={() => setIsExpanded(!isExpanded)}
       >
-        <CardHeader className="pb-3">
-          <div className="flex justify-between items-start">
-            <div className="space-y-1">
-              <h3 className="font-semibold text-lg flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-primary" />
+        {/* High-quality imagery area - design.md emphasis on visual-first */}
+        <div className="aspect-video bg-gradient-to-br from-primary/10 to-accent/10 relative overflow-hidden">
+          <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
+            <div className="text-white/80 text-center">
+              <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-2">
+                <MapPin className="w-8 h-8" />
+              </div>
+              <p className="text-sm font-medium">High-res Property Image</p>
+            </div>
+          </div>
+          {/* Status badge overlay */}
+          <div className="absolute top-4 right-4">
+            <Badge className={`${getStatusColor(property.statusColor)} shadow-sm`}>
+              {property.statusText}
+            </Badge>
+          </div>
+        </div>
+        
+        <CardHeader className="pb-4">
+          <div className="space-y-3">
+            <div>
+              <h3 className="text-heading text-lg font-semibold mb-1">
                 {property.address}
               </h3>
-              <p className="text-2xl font-bold text-primary">${property.rent.toLocaleString()}/mo</p>
+              <p className="text-3xl font-bold text-primary">${property.rent.toLocaleString()}<span className="text-lg text-muted font-normal">/mo</span></p>
             </div>
-            <div className="text-right space-y-2">
-              <Badge className={`${getStatusColor(property.statusColor)} status-pulse`}>
-                {property.statusText}
-              </Badge>
-              <p className="text-sm text-muted-foreground">{property.lastActivity}</p>
-            </div>
+            <p className="text-sm text-muted">{property.lastActivity}</p>
           </div>
         </CardHeader>
 
         <CardContent className="space-y-4">
-          <div className="flex justify-between items-center text-sm text-muted-foreground">
-            <div className="flex gap-4">
-              <span className="flex items-center gap-1">
-                <Bed className="w-4 h-4" />
+          <div className="flex justify-between items-center">
+            <div className="flex gap-6 text-sm text-body">
+              <span className="flex items-center gap-2 font-medium">
+                <Bed className="w-4 h-4 text-primary" />
                 {property.bedrooms} bed
               </span>
-              <span className="flex items-center gap-1">
-                <Bath className="w-4 h-4" />
+              <span className="flex items-center gap-2 font-medium">
+                <Bath className="w-4 h-4 text-primary" />
                 {property.bathrooms} bath
               </span>
-              <span className="flex items-center gap-1">
-                <Square className="w-4 h-4" />
+              <span className="flex items-center gap-2 font-medium">
+                <Square className="w-4 h-4 text-primary" />
                 {property.sqft} sqft
               </span>
             </div>
-            <span>Landlord: {property.landlord}</span>
+            <span className="text-sm text-muted font-medium">{property.landlord}</span>
           </div>
 
           {isExpanded && (
@@ -108,20 +120,21 @@ export const PropertyCard = ({ property }: PropertyCardProps) => {
                     >
                       <p className="text-sm">{message.text}</p>
                       <p className="text-xs text-muted-foreground mt-1">
-                        {message.sender === 'ai' ? '🤖 RentalBuddy AI' : `👤 ${property.landlord}`} • {message.time}
+                        {message.sender === 'ai' ? '🤖 RentAI' : `👤 ${property.landlord}`} • {message.time}
                       </p>
                     </div>
                   ))}
                 </div>
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex gap-3">
                 <Button 
                   onClick={(e) => {
                     e.stopPropagation();
                     handleScheduleViewing();
                   }}
-                  className="flex-1 bg-success hover:bg-success/90 text-success-foreground"
+                  className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground font-medium"
+                  size="lg"
                 >
                   <Calendar className="w-4 h-4 mr-2" />
                   Schedule Viewing
@@ -129,10 +142,11 @@ export const PropertyCard = ({ property }: PropertyCardProps) => {
                 <Button 
                   variant="outline" 
                   onClick={(e) => e.stopPropagation()}
-                  className="flex-1"
+                  className="flex-1 border-primary/20 hover:bg-primary/5 text-primary font-medium"
+                  size="lg"
                 >
                   <MessageCircle className="w-4 h-4 mr-2" />
-                  Send Message
+                  Contact
                 </Button>
               </div>
             </div>

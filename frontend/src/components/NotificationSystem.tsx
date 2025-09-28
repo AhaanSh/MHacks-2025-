@@ -7,7 +7,7 @@ export const NotificationSystem = () => {
       case 'success': return '🎉 Great News!';
       case 'warning': return '⚠️ Action Needed';
       case 'info': return 'ℹ️ Update';
-      default: return 'RentalBuddy';
+      default: return 'RentAI';
     }
   };
 

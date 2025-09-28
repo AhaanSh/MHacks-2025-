@@ -138,98 +138,118 @@ export const ChatBot = () => {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-120px)] max-w-4xl mx-auto">
-      {/* Chat Header */}
-      <div className="border-b bg-card/50 p-4 rounded-t-lg">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-primary rounded-lg">
+    <div className="flex flex-col h-[calc(100vh-120px)] max-w-5xl mx-auto relative">
+      {/* Minimalist Chat Header - design.md style */}
+      <div className="card-minimal border-0 p-6 rounded-t-xl">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 bg-primary rounded-full flex items-center justify-center">
             <Bot className="w-6 h-6 text-primary-foreground" />
           </div>
-          <div>
-            <h2 className="text-lg font-semibold">RentalBuddy AI Assistant</h2>
-            <p className="text-sm text-muted-foreground">Powered by MCP Agent • Ask me anything about apartment hunting!</p>
+          <div className="flex-1">
+            <h2 className="text-xl font-bold text-heading">AI Assistant</h2>
+            <p className="text-body text-sm">Ready to help you find your perfect home</p>
           </div>
-          <div className="ml-auto">
-            <Badge variant={isConnected ? "default" : "destructive"} className={isConnected ? "animate-pulse" : ""}>
-              ● {isConnected ? "Connected" : "Offline"}
+          <div>
+            <Badge 
+              variant={isConnected ? "default" : "destructive"} 
+              className={`${isConnected ? 'bg-success text-success-foreground' : ''} shadow-sm`}
+            >
+              {isConnected ? "● Connected" : "● Offline"}
             </Badge>
           </div>
         </div>
       </div>
 
-      {/* Messages Area */}
-      <ScrollArea className="flex-1 p-4 bg-card/20">
-        <div className="space-y-4">
+      {/* Clean Messages Area */}
+      <ScrollArea className="flex-1 p-6 bg-background/50">
+        <div className="space-y-6">
           {messages.map((message) => (
             <div
               key={message.id}
-              className={`flex gap-3 animate-fade-in ${
+              className={`flex gap-4 fade-in-up ${
                 message.sender === "user" ? "justify-end" : "justify-start"
               }`}
             >
               {message.sender === "ai" && (
-                <div className="flex-shrink-0 w-8 h-8 bg-primary rounded-full flex items-center justify-center">
-                  <Bot className="w-4 h-4 text-primary-foreground" />
+                <div className="flex-shrink-0 w-10 h-10 bg-primary rounded-full flex items-center justify-center shadow-sm">
+                  <Bot className="w-5 h-5 text-primary-foreground" />
                 </div>
               )}
               
               <div
-                className={`max-w-[70%] rounded-lg p-3 ${
+                className={`max-w-[75%] rounded-xl p-4 shadow-sm ${
                   message.sender === "user"
                     ? "bg-primary text-primary-foreground ml-auto"
-                    : "bg-muted"
+                    : "bg-card border border-border/50"
                 }`}
               >
-                <p className="text-sm whitespace-pre-wrap">{message.text}</p>
+                <p className={`leading-relaxed ${
+                  message.sender === "user" ? "text-primary-foreground" : "text-body"
+                }`}>{message.text}</p>
                 
+                {/* Rich, interactive listing cards - design.md style */}
                 {message.properties && message.properties.map((property) => (
-                  <div key={property.id} className="mt-3 p-3 bg-background/10 rounded border border-border/20">
-                    <h4 className="font-semibold text-sm">{property.address}</h4>
-                    <div className="flex gap-4 text-xs text-muted-foreground mt-1">
-                      <span>${property.rent}/mo</span>
-                      <span>{property.bedrooms} bed</span>
-                      <span>{property.bathrooms} bath</span>
-                    </div>
-                    {property.description && (
-                      <p className="text-xs text-muted-foreground mt-1">{property.description}</p>
-                    )}
-                    {property.amenities && property.amenities.length > 0 && (
-                      <div className="flex gap-1 mt-2 flex-wrap">
-                        {property.amenities.map((amenity, idx) => (
-                          <Badge key={idx} variant="outline" className="text-xs h-5">
-                            {amenity}
-                          </Badge>
-                        ))}
+                  <div key={property.id} className="mt-4 card-minimal p-4 border border-primary/10">
+                    <div className="space-y-3">
+                      <div>
+                        <h4 className="font-semibold text-heading">{property.address}</h4>
+                        <p className="text-lg font-bold text-primary">${property.rent}<span className="text-sm text-muted font-normal">/mo</span></p>
                       </div>
-                    )}
-                    <div className="flex gap-2 mt-3">
-                      <Button 
-                        size="sm" 
-                        variant="outline" 
-                        className="text-xs h-7 flex items-center gap-1"
-                        onClick={() => handlePropertyAction('favorite', property.id)}
-                      >
-                        <Heart className="w-3 h-3" />
-                        Favorite
-                      </Button>
-                      <Button 
-                        size="sm" 
-                        variant="outline" 
-                        className="text-xs h-7 flex items-center gap-1"
-                        onClick={() => handlePropertyAction('tour', property.id)}
-                      >
-                        <Calendar className="w-3 h-3" />
-                        Tour
-                      </Button>
-                      <Button 
-                        size="sm" 
-                        variant="outline" 
-                        className="text-xs h-7 flex items-center gap-1"
-                        onClick={() => handlePropertyAction('outreach', property.id)}
-                      >
-                        <MessageCircle className="w-3 h-3" />
-                        Contact
-                      </Button>
+                      
+                      <div className="flex gap-4 text-sm text-body">
+                        <span className="flex items-center gap-1">
+                          <span className="w-2 h-2 bg-primary rounded-full"></span>
+                          {property.bedrooms} bed
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <span className="w-2 h-2 bg-primary rounded-full"></span>
+                          {property.bathrooms} bath
+                        </span>
+                      </div>
+                      
+                      {property.description && (
+                        <p className="text-sm text-body leading-relaxed">{property.description}</p>
+                      )}
+                      
+                      {property.amenities && property.amenities.length > 0 && (
+                        <div className="flex gap-2 flex-wrap">
+                          {property.amenities.map((amenity, idx) => (
+                            <Badge key={idx} variant="outline" className="text-xs bg-accent/10 text-accent border-accent/20">
+                              {amenity}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                      
+                      {/* Clear call-to-action buttons */}
+                      <div className="flex gap-2 pt-2">
+                        <Button 
+                          size="sm" 
+                          className="bg-primary hover:bg-primary/90 text-primary-foreground flex items-center gap-2"
+                          onClick={() => handlePropertyAction('favorite', property.id)}
+                        >
+                          <Heart className="w-4 h-4" />
+                          Favorite
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          className="border-accent/20 hover:bg-accent/5 text-accent flex items-center gap-2"
+                          onClick={() => handlePropertyAction('tour', property.id)}
+                        >
+                          <Calendar className="w-4 h-4" />
+                          Tour
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          className="border-primary/20 hover:bg-primary/5 text-primary flex items-center gap-2"
+                          onClick={() => handlePropertyAction('outreach', property.id)}
+                        >
+                          <MessageCircle className="w-4 h-4" />
+                          Contact
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -266,23 +286,24 @@ export const ChatBot = () => {
         </div>
       </ScrollArea>
 
-      {/* Input Area */}
-      <div className="border-t bg-card/50 p-4 rounded-b-lg">
-        <div className="flex gap-2">
+      {/* Clean Input Area */}
+      <div className="card-minimal border-0 p-6 rounded-b-xl">
+        <div className="flex gap-3">
           <Input
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyPress={handleKeyPress}
             placeholder="Ask me about apartments, neighborhoods, pricing, or schedule a viewing..."
-            className="flex-1"
+            className="flex-1 search-focus border-border/50 h-12 text-base"
             disabled={isTyping}
           />
           <Button
             onClick={handleSendMessage}
             disabled={!inputValue.trim() || isTyping}
-            size="icon"
+            size="lg"
+            className="h-12 px-6 bg-primary hover:bg-primary/90 text-primary-foreground"
           >
-            <Send className="w-4 h-4" />
+            <Send className="w-5 h-5" />
           </Button>
         </div>
         

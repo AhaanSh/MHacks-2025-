@@ -1,173 +1,225 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Bot, Wifi, WifiOff, MessageCircle, BarChart3 } from "lucide-react";
-import { SearchBar } from "./SearchBar";
+import { Bot, Home, TrendingUp, Calendar, Users, DollarSign, MapPin, Heart, Star, BarChart3, MessageCircle } from "lucide-react";
 import { PropertyCard } from "./PropertyCard";
 import { ActivityFeed } from "./ActivityFeed";
 import { MetricsDashboard } from "./MetricsDashboard";
 import { NotificationSystem } from "./NotificationSystem";
-import { ChatBot } from "./ChatBot";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-export const Dashboard = () => {
+
+interface DashboardProps {
+  onNavigateToChat: () => void;
+  isConnected: boolean;
+}
+
+export const Dashboard = ({ onNavigateToChat, isConnected }: DashboardProps) => {
   const [properties] = useState([]);
-  const [searchResults, setSearchResults] = useState([]);
-  const [isConnected, setIsConnected] = useState(true);
-  const [currentView, setCurrentView] = useState<"dashboard" | "chat">("chat");
-
-  // Mock WebSocket connection status
-  useEffect(() => {
-    const interval = setInterval(() => {
-      // Occasionally simulate connection issues (just for demo)
-      if (Math.random() > 0.95) {
-        setIsConnected(false);
-        setTimeout(() => setIsConnected(true), 3000);
-      }
-    }, 10000);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  const handleSearch = (query: string) => {
-    // Simulate search by just returning all properties
-    setSearchResults(properties);
-  };
+  const [dashboardStats, setDashboardStats] = useState({
+    totalProperties: 1247,
+    favoritedProperties: 12,
+    scheduledTours: 3,
+    activeConversations: 2,
+    avgRent: 2450,
+    savedSearches: 8
+  });
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen relative">
       <NotificationSystem />
       
-      {/* Header */}
-      <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-40">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-primary rounded-lg">
-                <Bot className="w-8 h-8 text-primary-foreground" />
+      {/* Dashboard Header */}
+      <div className="max-w-7xl mx-auto px-6 py-8">
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-4xl font-bold text-heading mb-2">Dashboard</h1>
+            <p className="text-body">Track your apartment hunting progress and metrics</p>
+          </div>
+          <Button
+            onClick={onNavigateToChat}
+            className="bg-primary hover:bg-primary/90 text-primary-foreground"
+          >
+            <MessageCircle className="w-4 h-4 mr-2" />
+            Start Chat
+          </Button>
+        </div>
+
+        {/* Stats Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <div className="card-minimal p-6">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center">
+                <Home className="w-6 h-6 text-primary" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-                  RentalBuddy
-                </h1>
-                <p className="text-sm text-muted-foreground">AI-Powered Apartment Hunting</p>
+                <p className="text-2xl font-bold text-heading">{dashboardStats.totalProperties.toLocaleString()}</p>
+                <p className="text-sm text-muted">Available Properties</p>
+              </div>
+            </div>
+          </div>
+          
+          <div className="card-minimal p-6">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-accent/10 rounded-lg flex items-center justify-center">
+                <Heart className="w-6 h-6 text-accent" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-heading">{dashboardStats.favoritedProperties}</p>
+                <p className="text-sm text-muted">Favorited</p>
+              </div>
+            </div>
+          </div>
+          
+          <div className="card-minimal p-6">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-success/10 rounded-lg flex items-center justify-center">
+                <Calendar className="w-6 h-6 text-success" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-heading">{dashboardStats.scheduledTours}</p>
+                <p className="text-sm text-muted">Scheduled Tours</p>
+              </div>
+            </div>
+          </div>
+          
+          <div className="card-minimal p-6">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center">
+                <DollarSign className="w-6 h-6 text-primary" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-heading">${dashboardStats.avgRent.toLocaleString()}</p>
+                <p className="text-sm text-muted">Avg Rent</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Favorited Properties Section - Full Width */}
+        <div className="mb-8">
+          <h2 className="text-3xl font-bold text-heading mb-6">
+            Favorited Properties
+          </h2>
+          
+          {/* Favorited properties display */}
+          <div className="card-minimal p-8">
+            {properties.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {properties.map((property) => (
+                  <PropertyCard key={property.id} property={property} />
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <Heart className="w-10 h-10 text-primary" />
+                </div>
+                <div className="space-y-4">
+                  <h3 className="text-2xl font-semibold text-heading">Start Your Search</h3>
+                  <p className="text-body max-w-md mx-auto">
+                    Chat with our AI to discover properties tailored to your preferences and start building your favorites list.
+                  </p>
+                </div>
+                <Button 
+                  size="lg" 
+                  className="h-12 px-8 bg-primary hover:bg-primary/90 text-primary-foreground mt-6"
+                  onClick={onNavigateToChat}
+                >
+                  <MessageCircle className="w-5 h-5 mr-2" />
+                  Start Chatting
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Main Dashboard Content */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Left Column - Analytics */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Metrics Dashboard */}
+            <div className="card-minimal p-6">
+              <h3 className="text-xl font-semibold text-heading mb-4">Property Analytics</h3>
+              <MetricsDashboard />
+            </div>
+            
+            {/* Recent Properties */}
+            <div className="card-minimal p-6">
+              <h3 className="text-xl font-semibold text-heading mb-4">Recent Properties</h3>
+              {properties.length > 0 ? (
+                <div className="space-y-4">
+                  {properties.map((property) => (
+                    <PropertyCard key={property.id} property={property} />
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Home className="w-8 h-8 text-muted-foreground" />
+                  </div>
+                  <p className="text-body mb-4">No recent activity yet</p>
+                  <Button onClick={onNavigateToChat} variant="outline">
+                    Start Searching
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+          
+          {/* Right Column - Activity & Actions */}
+          <div className="space-y-6">
+            {/* Connection Status */}
+            <div className="card-minimal p-6">
+              <h3 className="text-lg font-semibold text-heading mb-4">Connection Status</h3>
+              <div className="flex items-center gap-3">
+                <Badge 
+                  variant={isConnected ? "default" : "destructive"} 
+                  className={`${isConnected ? 'bg-success text-success-foreground' : ''}`}
+                >
+                  {isConnected ? "● Connected" : "● Disconnected"}
+                </Badge>
+                <span className="text-sm text-body">
+                  {isConnected ? "AI Assistant Ready" : "Reconnecting..."}
+                </span>
               </div>
             </div>
             
-            <div className="flex items-center gap-3">
-              {/* View Toggle */}
-              <div className="flex bg-muted rounded-lg p-1">
-                <Button
-                  variant={currentView === "chat" ? "default" : "ghost"}
-                  size="sm"
-                  onClick={() => setCurrentView("chat")}
-                  className="flex items-center gap-2 h-8"
+            {/* Recent Activity */}
+            <div className="card-minimal p-6">
+              <h3 className="text-lg font-semibold text-heading mb-4">Recent Activity</h3>
+              <ActivityFeed />
+            </div>
+            
+            {/* Quick Actions */}
+            <div className="card-minimal p-6">
+              <h3 className="text-lg font-semibold text-heading mb-4">Quick Actions</h3>
+              <div className="space-y-3">
+                <Button 
+                  onClick={onNavigateToChat} 
+                  className="w-full justify-start" 
+                  variant="ghost"
                 >
-                  <MessageCircle className="w-4 h-4" />
-                  Chat
+                  <MessageCircle className="w-4 h-4 mr-2" />
+                  New Search
                 </Button>
-                <Button
-                  variant={currentView === "dashboard" ? "default" : "ghost"}
-                  size="sm"
-                  onClick={() => setCurrentView("dashboard")}
-                  className="flex items-center gap-2 h-8"
-                >
-                  <BarChart3 className="w-4 h-4" />
-                  Dashboard
+                <Button className="w-full justify-start" variant="ghost">
+                  <Calendar className="w-4 h-4 mr-2" />
+                  Schedule Tour
+                </Button>
+                <Button className="w-full justify-start" variant="ghost">
+                  <Star className="w-4 h-4 mr-2" />
+                  View Favorites
+                </Button>
+                <Button className="w-full justify-start" variant="ghost">
+                  <BarChart3 className="w-4 h-4 mr-2" />
+                  View Reports
                 </Button>
               </div>
-              
-              <Badge variant={isConnected ? "default" : "destructive"} className="flex items-center gap-2">
-                {isConnected ? (
-                  <>
-                    <Wifi className="w-3 h-3" />
-                    Connected
-                  </>
-                ) : (
-                  <>
-                    <WifiOff className="w-3 h-3" />
-                    Reconnecting...
-                  </>
-                )}
-              </Badge>
             </div>
           </div>
         </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="container mx-auto px-4 py-8">
-        {currentView === "chat" ? (
-          <ChatBot />
-        ) : (
-          <div className="space-y-8">
-            {/* Search Section */}
-            <section className="text-center space-y-4">
-              <div className="max-w-3xl mx-auto">
-                <h2 className="text-4xl font-bold mb-2">Find Your Perfect Home</h2>
-                <p className="text-xl text-muted-foreground mb-8">
-                  Let AI handle the search, negotiations, and paperwork while you focus on finding your dream apartment.
-                </p>
-                <SearchBar onSearch={handleSearch} />
-              </div>
-            </section>
-
-            {/* Metrics Dashboard */}
-            <section>
-              <h3 className="text-2xl font-semibold mb-6 flex items-center gap-2">
-                📊 Your Dashboard Overview
-              </h3>
-              <MetricsDashboard />
-            </section>
-
-            {/* Main Grid Layout */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              {/* Property Conversations */}
-              <div className="lg:col-span-2 space-y-6">
-                <h3 className="text-2xl font-semibold flex items-center gap-2">
-                  🏠 Active Property Conversations
-                </h3>
-                <div className="space-y-4">
-                  {searchResults.length > 0 ? (
-                    searchResults.map((property) => (
-                      <PropertyCard key={property.id} property={property} />
-                    ))
-                  ) : (
-                    <div className="text-center py-12 border-2 border-dashed border-muted-foreground/25 rounded-lg">
-                      <div className="text-6xl mb-4">🏠</div>
-                      <h3 className="text-xl font-semibold mb-2">No Properties Yet</h3>
-                      <p className="text-muted-foreground mb-4">Start chatting with the AI to find your perfect rental!</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Activity Feed */}
-              <div className="space-y-6">
-                <ActivityFeed />
-                
-                {/* Mock Document Upload Area */}
-                <div className="border-2 border-dashed border-primary/20 rounded-lg p-6 text-center hover:border-primary/40 transition-colors">
-                  <div className="space-y-2">
-                    <div className="text-4xl">📄</div>
-                    <h4 className="font-semibold">Upload Documents</h4>
-                    <p className="text-sm text-muted-foreground">
-                      Drag documents here for AI analysis
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-      </main>
-
-      {/* Footer */}
-      <footer className="border-t bg-card/50 mt-16">
-        <div className="container mx-auto px-4 py-6 text-center text-muted-foreground">
-          <p>RentalBuddy Dashboard - Prototype Demo</p>
-        </div>
-      </footer>
+      </div>
     </div>
   );
 };

@@ -30,37 +30,40 @@ export const SearchBar = ({ onSearch }: SearchBarProps) => {
   };
 
   return (
-    <div className="w-full max-w-2xl mx-auto mb-8">
-      <div className="flex gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-5 h-5" />
-          <Input
-            placeholder="Describe your dream apartment..."
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyPress={handleKeyPress}
-            className="pl-10 h-12 text-lg border-2 border-primary/20 focus:border-primary transition-colors"
-            disabled={isLoading}
-          />
+    <div className="w-full">
+      {/* Prominent, central search bar per design.md */}
+      <div className="bg-card rounded-2xl p-2 shadow-sm border border-border/50">
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-muted w-6 h-6" />
+            <Input
+              placeholder="Describe your dream apartment..."
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyPress={handleKeyPress}
+              className="pl-12 h-14 text-lg border-0 bg-transparent search-focus text-heading placeholder:text-muted"
+              disabled={isLoading}
+            />
+          </div>
+          <Button 
+            onClick={handleSearch}
+            disabled={isLoading || !query.trim()}
+            className="h-14 px-8 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold rounded-xl transition-all hover:shadow-md"
+          >
+            {isLoading ? (
+              <Loader2 className="w-6 h-6 animate-spin" />
+            ) : (
+              "Search"
+            )}
+          </Button>
         </div>
-        <Button 
-          onClick={handleSearch}
-          disabled={isLoading || !query.trim()}
-          className="h-12 px-6 bg-primary hover:bg-primary-hover text-primary-foreground font-semibold transition-all hover:scale-105"
-        >
-          {isLoading ? (
-            <Loader2 className="w-5 h-5 animate-spin" />
-          ) : (
-            "Search"
-          )}
-        </Button>
       </div>
       
       {isLoading && (
-        <div className="mt-4 text-center text-muted-foreground fade-in-up">
-          <div className="inline-flex items-center gap-2">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            Searching for perfect matches...
+        <div className="mt-6 text-center fade-in-up">
+          <div className="inline-flex items-center gap-3 bg-card px-6 py-3 rounded-full shadow-sm">
+            <Loader2 className="w-5 h-5 animate-spin text-primary" />
+            <span className="text-body font-medium">Searching for perfect matches...</span>
           </div>
         </div>
       )}

@@ -17,12 +17,12 @@ export default {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
-        background: "hsl(var(--background))",
-        foreground: "hsl(var(--foreground))",
+        background: "#f5f5f5", // Soft light gray from design.md
+        foreground: "#333333", // Dark gray for high readability
         primary: {
-          DEFAULT: "hsl(var(--primary))",
-          foreground: "hsl(var(--primary-foreground))",
-          hover: "hsl(var(--primary-hover))",
+          DEFAULT: "#ff9966", // Muted orange from design.md
+          foreground: "#ffffff",
+          hover: "#e6855c",
         },
         secondary: {
           DEFAULT: "hsl(var(--secondary))",
@@ -33,41 +33,41 @@ export default {
           foreground: "hsl(var(--destructive-foreground))",
         },
         muted: {
-          DEFAULT: "hsl(var(--muted))",
-          foreground: "hsl(var(--muted-foreground))",
+          DEFAULT: "#e8e8e8",
+          foreground: "#666666",
         },
         accent: {
-          DEFAULT: "hsl(var(--accent))",
-          foreground: "hsl(var(--accent-foreground))",
-          light: "hsl(var(--accent-light))",
+          DEFAULT: "#cc9900", // Soft gold from design.md
+          foreground: "#ffffff",
+          light: "#ffe066",
         },
         success: {
-          DEFAULT: "hsl(var(--success))",
-          foreground: "hsl(var(--success-foreground))",
-          light: "hsl(var(--success-light))",
+          DEFAULT: "#22c55e",
+          foreground: "#ffffff",
+          light: "#86efac",
         },
         warning: {
-          DEFAULT: "hsl(var(--warning))",
-          foreground: "hsl(var(--warning-foreground))",
-          light: "hsl(var(--warning-light))",
+          DEFAULT: "#f59e0b",
+          foreground: "#ffffff",
+          light: "#fcd34d",
         },
         popover: {
-          DEFAULT: "hsl(var(--popover))",
-          foreground: "hsl(var(--popover-foreground))",
+          DEFAULT: "#ffffff",
+          foreground: "#333333",
         },
         card: {
-          DEFAULT: "hsl(var(--card))",
-          foreground: "hsl(var(--card-foreground))",
+          DEFAULT: "#ffffff",
+          foreground: "#333333",
         },
         sidebar: {
-          DEFAULT: "hsl(var(--sidebar-background))",
-          foreground: "hsl(var(--sidebar-foreground))",
-          primary: "hsl(var(--sidebar-primary))",
-          "primary-foreground": "hsl(var(--sidebar-primary-foreground))",
-          accent: "hsl(var(--sidebar-accent))",
-          "accent-foreground": "hsl(var(--sidebar-accent-foreground))",
-          border: "hsl(var(--sidebar-border))",
-          ring: "hsl(var(--sidebar-ring))",
+          DEFAULT: "#ffffff",
+          foreground: "#333333",
+          primary: "#ff9966",
+          "primary-foreground": "#ffffff",
+          accent: "#cc9900",
+          "accent-foreground": "#ffffff",
+          border: "#e8e8e8",
+          ring: "#ff9966",
         },
       },
       borderRadius: {
