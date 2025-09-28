@@ -339,7 +339,7 @@ for t in threads:
         
         messages = messages_response.messages if hasattr(messages_response, 'messages') else messages_response
         
-    print(f"\nMessages in Thread {t.thread_id}:")
+        print(f"\nMessages in Thread {t.thread_id}:")
         if messages:
             for i, m in enumerate(messages):
                 print(f"\n--- Message {i+1} ---")
@@ -378,6 +378,7 @@ for t in threads:
     except Exception as e:
         print(f"⚠️ Could not read messages from thread {t.thread_id}: {e}")
         print(f"Available client attributes: {[attr for attr in dir(client) if not attr.startswith('_')]}")
+
 
 # 4️⃣ List existing drafts (since we can't create new ones easily)
 print("\n📝 Checking existing drafts...")
