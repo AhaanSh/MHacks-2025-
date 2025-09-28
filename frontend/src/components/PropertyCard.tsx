@@ -120,7 +120,7 @@ export const PropertyCard = ({ property }: PropertyCardProps) => {
                     >
                       <p className="text-sm">{message.text}</p>
                       <p className="text-xs text-muted-foreground mt-1">
-                        {message.sender === 'ai' ? '🤖 RentAI' : `👤 ${property.landlord}`} • {message.time}
+                        {message.sender === 'ai' ? '🤖 rentAI' : `👤 ${property.landlord}`} • {message.time}
                       </p>
                     </div>
                   ))}

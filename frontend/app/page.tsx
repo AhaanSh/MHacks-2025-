@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Bot, Wifi, WifiOff } from "lucide-react";
+import { Home as HomeIcon, MessageCircle, BarChart3 } from "lucide-react";
 import { Dashboard } from '../src/components/Dashboard';
 import { ChatBot } from '../src/components/ChatBot';
 import { HeroLanding } from '../src/components/HeroLanding';
+import { AuthButton } from '../src/components/AuthButton';
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -49,27 +50,23 @@ export default function Home() {
               className="flex items-center gap-4 cursor-pointer"
               onClick={handleNavigateToLanding}
             >
-              <div className="p-2 bg-primary rounded-xl">
-                <Bot className="w-5 h-5 text-primary-foreground" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-heading">
-                  RentAI
-                </h1>
-                <p className="text-body text-xs">AI-Powered Apartment Hunting</p>
-              </div>
+              <img 
+                src="/rentai-logo.png" 
+                alt="rentAI Logo" 
+                className="h-16 w-auto"
+              />
             </div>
             
             <div className="flex items-center gap-3">
               {/* View Toggle */}
-              <div className="flex bg-muted rounded-lg p-1">
+              <div className="flex bg-muted rounded-lg p-1 gap-1">
                 <Button
                   variant={currentView === "landing" ? "default" : "ghost"}
                   size="sm"
                   onClick={handleNavigateToLanding}
                   className="flex items-center gap-2 h-8 text-xs"
                 >
-                  <Bot className="w-3 h-3" />
+                  <HomeIcon className="w-3 h-3" />
                   Home
                 </Button>
                 <Button
@@ -78,7 +75,7 @@ export default function Home() {
                   onClick={handleNavigateToChat}
                   className="flex items-center gap-2 h-8 text-xs"
                 >
-                  <Bot className="w-3 h-3" />
+                  <MessageCircle className="w-3 h-3" />
                   Chat
                 </Button>
                 <Button
@@ -87,24 +84,12 @@ export default function Home() {
                   onClick={handleNavigateToDashboard}
                   className="flex items-center gap-2 h-8 text-xs"
                 >
-                  <Bot className="w-3 h-3" />
+                  <BarChart3 className="w-3 h-3" />
                   Dashboard
                 </Button>
               </div>
               
-              <Badge variant={isConnected ? "default" : "destructive"} className="flex items-center gap-2">
-                {isConnected ? (
-                  <>
-                    <Wifi className="w-3 h-3" />
-                    Connected
-                  </>
-                ) : (
-                  <>
-                    <WifiOff className="w-3 h-3" />
-                    Reconnecting...
-                  </>
-                )}
-              </Badge>
+              <AuthButton />
             </div>
           </div>
         </div>
@@ -131,7 +116,7 @@ export default function Home() {
       {/* Footer */}
       <footer className="border-t bg-card/70 backdrop-blur-sm mt-16">
         <div className="container mx-auto px-4 py-6 text-center text-muted-foreground">
-          <p>RentAI - Prototype Demo</p>
+          <p>rentAI - Made with Maize and Blue</p>
         </div>
       </footer>
     </div>

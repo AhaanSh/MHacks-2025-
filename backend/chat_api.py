@@ -8,13 +8,18 @@ import uuid
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import httpx
+from dotenv import load_dotenv
 
-# Import your existing MCP agent functions
+# Load environment variables from agent directory
 import sys
 import os
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'agent'))
+agent_path = os.path.join(os.path.dirname(__file__), '..', 'agent')
+sys.path.append(agent_path)
+load_dotenv(os.path.join(agent_path, '.env'))
+
 from business_logic import handle_user_query
 from agents import understand_query
 
@@ -43,6 +48,7 @@ class MCPResponse(BaseModel):
 
 class ActionRequest(BaseModel):
     propertyId: str
+    propertyAddress: Optional[str] = None
     preferredDate: Optional[str] = None
     customMessage: Optional[str] = None
 
@@ -52,6 +58,9 @@ class ActionResponse(BaseModel):
 
 # In-memory conversation storage for demo
 conversations: Dict[str, List[Dict]] = {}
+
+# In-memory property ID to address mapping
+property_id_to_address: Dict[str, str] = {}
 
 # Demo fallback responses
 DEMO_PROPERTIES = [
@@ -109,61 +118,93 @@ def get_demo_response(message: str) -> MCPResponse:
 def format_properties_from_business_logic(response_text: str) -> List[PropertyInfo]:
     """
     Parse the business logic response and extract property information
-    This is a simplified parser for demo purposes
+    Updated to handle the new emoji-based format
     """
     properties = []
     
-    # Simple parsing - look for property patterns in the response
     lines = response_text.split('\n')
-    current_property = None
+    current_property = {}
     
     for line in lines:
         line = line.strip()
-        if line.startswith('- ') and '|' in line:
-            # Parse format: "- Address | $rent | bed bed / bath bath"
-            parts = line[2:].split('|')
-            if len(parts) >= 3:
-                address = parts[0].strip()
-                rent_str = parts[1].strip().replace('$', '').replace(',', '')
-                bed_bath = parts[2].strip()
+        
+        # Look for property header line with house emoji
+        if line.startswith('🏠 Property'):
+            # If we have a current property, save it
+            if current_property:
+                properties.append(create_property_info(current_property))
+                current_property = {}
+            
+            # Parse: "🏠 Property 1: Address - $Price"
+            try:
+                # Extract property number first
+                property_part = line.split(':', 1)[0]  # "🏠 Property 1"
+                property_number = property_part.split('Property')[1].strip()
+                current_property['property_number'] = property_number
                 
-                try:
-                    rent = int(rent_str) if rent_str.isdigit() else 1500
-                except:
-                    rent = 1500
+                # Extract address and price
+                parts = line.split(':', 1)[1].strip()  # Remove "🏠 Property 1:"
+                if ' - $' in parts:
+                    address, price_str = parts.rsplit(' - $', 1)
+                    price_str = price_str.replace(',', '')
+                    current_property['address'] = address.strip()
+                    current_property['rent'] = int(price_str) if price_str.isdigit() else 1500
+                else:
+                    current_property['address'] = parts.strip()
+                    current_property['rent'] = 1500
+            except:
+                current_property['address'] = "Unknown Address"
+                current_property['rent'] = 1500
+                current_property['property_number'] = "?"
+        
+        # Look for bedroom/bathroom info
+        elif '🛏️' in line and 'bed' in line:
+            try:
+                bed_part = line.split('🛏️')[1].split('bed')[0].strip()
+                current_property['bedrooms'] = int(bed_part) if bed_part.isdigit() else 2
+            except:
+                current_property['bedrooms'] = 2
                 
-                # Extract bedroom/bathroom info
-                bedrooms = 2
-                bathrooms = 1.0
-                if 'bed' in bed_bath:
-                    try:
-                        bed_part = bed_bath.split('bed')[0].strip()
-                        bedrooms = int(bed_part) if bed_part.isdigit() else 2
-                    except:
-                        pass
-                
-                if 'bath' in bed_bath:
-                    try:
-                        bath_parts = bed_bath.split('/')
-                        if len(bath_parts) > 1:
-                            bath_part = bath_parts[1].replace('bath', '').strip()
-                            bathrooms = float(bath_part) if bath_part.replace('.', '').isdigit() else 1.0
-                    except:
-                        pass
-                
-                property_info = PropertyInfo(
-                    id=str(uuid.uuid4()),
-                    address=address,
-                    rent=rent,
-                    bedrooms=bedrooms,
-                    bathrooms=bathrooms,
-                    description=f"Great property at {address}",
-                    amenities=["Parking", "Laundry"],
-                    landlord={"name": "Property Manager", "email": "contact@property.com", "phone": "555-0199"}
-                )
-                properties.append(property_info)
+        elif '🚿' in line and 'bath' in line:
+            try:
+                bath_part = line.split('🚿')[1].split('bath')[0].strip()
+                current_property['bathrooms'] = float(bath_part) if bath_part.replace('.', '').isdigit() else 1.0
+            except:
+                current_property['bathrooms'] = 1.0
+        
+        # Look for contact info
+        elif '📞 Contact:' in line:
+            contact_info = line.split('📞 Contact:', 1)[1].strip()
+            current_property['contact'] = contact_info
+    
+    # Don't forget the last property
+    if current_property:
+        properties.append(create_property_info(current_property))
     
     return properties
+
+def create_property_info(prop_data: dict) -> PropertyInfo:
+    """Helper function to create PropertyInfo from parsed data"""
+    property_number = prop_data.get('property_number', '?')
+    address = prop_data.get('address', 'Unknown Address')
+    
+    # Add property number to the address display
+    display_address = f"Property {property_number}: {address}"
+    
+    # Generate property ID and store mapping
+    property_id = str(uuid.uuid4())
+    property_id_to_address[property_id] = display_address
+    
+    return PropertyInfo(
+        id=property_id,
+        address=display_address,
+        rent=prop_data.get('rent', 1500),
+        bedrooms=prop_data.get('bedrooms', 2),
+        bathrooms=prop_data.get('bathrooms', 1.0),
+        description=f"Great property at {address}",
+        amenities=None,
+        landlord={"name": "Property Manager", "email": "contact@property.com", "phone": "555-0199"}
+    )
 
 async def communicate_with_mcp_agent(message: str, conversation_id: str) -> MCPResponse:
     """
@@ -179,9 +220,15 @@ async def communicate_with_mcp_agent(message: str, conversation_id: str) -> MCPR
         # Parse properties from response
         properties = format_properties_from_business_logic(business_response)
         
+        # If we found properties, provide a clean message instead of the detailed text
+        if properties:
+            clean_message = f"I found {len(properties)} properties that match your request. You can favorite, tour, or contact any of these properties using the buttons below."
+        else:
+            clean_message = business_response
+        
         return MCPResponse(
             success=True,
-            message=business_response,
+            message=clean_message,
             properties=properties if properties else None
         )
         
@@ -192,6 +239,15 @@ async def communicate_with_mcp_agent(message: str, conversation_id: str) -> MCPR
 
 # FastAPI endpoints
 app = FastAPI()
+
+# Add CORS middleware to allow frontend connections
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3001", "http://127.0.0.1:3001"],  # Next.js ports
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.post("/api/chat", response_model=MCPResponse)
 async def chat_endpoint(request: ChatRequest):
@@ -257,9 +313,14 @@ async def schedule_tour(request: ActionRequest):
     """
     try:
         preferred_date = request.preferredDate or "next week"
+        # Extract property number and address for message
+        # Try to get address from mapping, fallback to provided address or ID
+        property_address = (request.propertyAddress or 
+                          property_id_to_address.get(request.propertyId) or 
+                          f"Property {request.propertyId}")
         return ActionResponse(
             success=True,
-            message=f"Tour scheduled for property {request.propertyId} on {preferred_date}. You'll receive a confirmation email shortly."
+            message=f"Request for Tour Message sent to Property: {property_address}!"
         )
     except Exception as e:
         return ActionResponse(
@@ -274,9 +335,14 @@ async def setup_outreach(request: ActionRequest):
     """
     try:
         custom_message = request.customMessage or "I'm interested in learning more about this property."
+        # Extract property number and address for message
+        # Try to get address from mapping, fallback to provided address or ID
+        property_address = (request.propertyAddress or 
+                          property_id_to_address.get(request.propertyId) or 
+                          f"Property {request.propertyId}")
         return ActionResponse(
             success=True,
-            message=f"Outreach message sent to landlord for property {request.propertyId}. They should respond within 24 hours."
+            message=f"Expression of Interest Message sent to Property: {property_address}!"
         )
     except Exception as e:
         return ActionResponse(
@@ -300,4 +366,4 @@ async def get_conversation(conversation_id: str):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=3001)
+    uvicorn.run(app, host="0.0.0.0", port=8000)

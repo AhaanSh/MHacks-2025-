@@ -41,7 +41,7 @@ interface ActionResponse {
 }
 
 export class MCPService {
-  private static BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+  private static BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'; //    'http://localhost:3001/api';
   private static timeout = 30000; // 30 second timeout
   private static isDemoMode = process.env.NODE_ENV === 'development';
 
@@ -133,7 +133,7 @@ export class MCPService {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
-      const response = await fetch(`${this.BASE_URL}/chat`, {
+      const response = await fetch(`${this.BASE_URL}/api/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -163,8 +163,15 @@ export class MCPService {
     } catch (error) {
       console.error('Error communicating with MCP agent:', error);
       
-      // Fallback to demo responses for reliability
-      if (this.isDemoMode || !navigator.onLine) {
+      // Log the actual error for debugging
+      console.error('Fetch error details:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        url: `${this.BASE_URL}/api/chat`,
+        error
+      });
+      
+      // Only fallback to demo responses if we're offline - remove demo mode fallback for testing
+      if (!navigator.onLine) {
         return this.getDemoResponse(message);
       }
 
@@ -181,7 +188,7 @@ export class MCPService {
    */
   static async favoriteProperty(propertyId: string): Promise<ActionResponse> {
     try {
-      const response = await fetch(`${this.BASE_URL}/favorites`, {
+      const response = await fetch(`${this.BASE_URL}/api/favorites`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -210,16 +217,18 @@ export class MCPService {
    */
   static async scheduleTour(
     propertyId: string, 
+    propertyAddress?: string,
     preferredDate?: string
   ): Promise<ActionResponse> {
     try {
-      const response = await fetch(`${this.BASE_URL}/schedule-tour`, {
+      const response = await fetch(`${this.BASE_URL}/api/schedule-tour`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ 
           propertyId,
+          propertyAddress,
           preferredDate: preferredDate || new Date().toISOString(),
         }),
       });
@@ -245,16 +254,18 @@ export class MCPService {
    */
   static async setupOutreach(
     propertyId: string, 
+    propertyAddress?: string,
     customMessage?: string
   ): Promise<ActionResponse> {
     try {
-      const response = await fetch(`${this.BASE_URL}/outreach`, {
+      const response = await fetch(`${this.BASE_URL}/api/outreach`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ 
           propertyId,
+          propertyAddress,
           customMessage: customMessage || "I'm interested in learning more about this property.",
         }),
       });
@@ -280,11 +291,15 @@ export class MCPService {
    */
   static async healthCheck(): Promise<boolean> {
     try {
-      const response = await fetch(`${this.BASE_URL}/health`, {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout for health check
+      
+      const response = await fetch(`${this.BASE_URL}/api/health`, {
         method: 'GET',
-        signal: AbortSignal.timeout(5000), // 5 second timeout for health check
+        signal: controller.signal,
       });
       
+      clearTimeout(timeoutId);
       return response.ok;
     } catch (error) {
       console.error('Health check failed:', error);
@@ -299,7 +314,7 @@ export class MCPService {
     const activeConversationId = conversationId || this.getConversationId();
     
     try {
-      const response = await fetch(`${this.BASE_URL}/conversations/${activeConversationId}`);
+      const response = await fetch(`${this.BASE_URL}/api/conversations/${activeConversationId}`);
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);

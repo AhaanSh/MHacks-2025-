@@ -735,7 +735,7 @@ def _run_rental_query(sender: str, filters: Dict[str, Any]) -> str:
                 df = df[cond]
 
     if df.empty:
-        return "Sorry, I couldn't find any properties matching your request. (Active filters: " + summarize_filters(filters) + ")"
+        return "Sorry, I couldn't find any properties matching those criteria. You might want to try adjusting your search requirements or exploring a different area."
 
     if "id" in df.columns:
         df = df.drop_duplicates(subset=["id"])
@@ -748,10 +748,13 @@ def _run_rental_query(sender: str, filters: Dict[str, Any]) -> str:
     return _format_results(df, filters, sender)
 
 
-def _format_results(df: pd.DataFrame, filters: Dict[str, Any], sender: str, prefix: str = "Here are some properties that match your request", show_favorite_option: bool = True, rental_mode: bool = False) -> str:
+def _format_results(df: pd.DataFrame, filters: Dict[str, Any], sender: str, prefix: str = "Here are some properties that match your request", show_favorite_option: bool = True) -> str:
+    """Enhanced results formatting with property IDs for easier favoriting"""
     results = df.head(5).to_dict(orient="records")
-    user_last_search_results[sender] = results.copy()
-
+    
+    # Store the results for this user
+    user_last_search_results[sender] = results
+    
     if show_favorite_option:
         lines = [f"{prefix} (Active filters: {summarize_filters(filters)}):\n"]
     else:
@@ -770,14 +773,20 @@ def _format_results(df: pd.DataFrame, filters: Dict[str, Any], sender: str, pref
         bathrooms_val = row.get("bathrooms")
         
         parts = [f"- Property {i}: {address}"]
-        if price_str:
-            parts.append(price_str)
+        if pd.notna(price_val):
+            parts.append(pretty_price(price_val))
 
         br_parts = []
         if pd.notna(bedrooms_val):
-            br_parts.append(f"{int(bedrooms_val)} bed")
+            try:
+                br_parts.append(f"{int(bedrooms_val)} bed")
+            except Exception:
+                br_parts.append(f"{bedrooms_val} bed")
         if pd.notna(bathrooms_val):
-            br_parts.append(f"{int(bathrooms_val)} bath")
+            try:
+                br_parts.append(f"{int(bathrooms_val)} bath")
+            except Exception:
+                br_parts.append(f"{bathrooms_val} bath")
         if br_parts:
             parts.append("| " + " / ".join(br_parts))
 
@@ -785,13 +794,15 @@ def _format_results(df: pd.DataFrame, filters: Dict[str, Any], sender: str, pref
         if contact:
             parts.append("| Contact: " + contact)
 
+        # Add favoriting instruction with simple number
         if show_favorite_option:
             parts.append(f"| Say 'favorite {i}' to save")
 
         lines.append(" ".join(parts))
 
+    # Add helpful instructions at the bottom
     if show_favorite_option:
-        lines.append("\nTip: Use 'favorite 1', 'favorite 2', etc. to add properties to favorites, then 'show favorites' to view them later")
+        lines.append(f"\nTip: Use 'favorite 1', 'favorite 2', etc. to add properties to favorites, then 'show favorites' to view them later")
 
     return "\n".join(lines)
 
