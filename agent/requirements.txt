@@ -1,0 +1,5 @@
+uagents
+uagents-core
+google-generativeai
+pandas
+python-dotenv
