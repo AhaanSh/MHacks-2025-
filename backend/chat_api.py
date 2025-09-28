@@ -133,6 +133,11 @@ def format_properties_from_business_logic(response_text: str) -> List[PropertyIn
             
             # Parse: "🏠 Property 1: Address - $Price"
             try:
+                # Extract property number first
+                property_part = line.split(':', 1)[0]  # "🏠 Property 1"
+                property_number = property_part.split('Property')[1].strip()
+                current_property['property_number'] = property_number
+                
                 # Extract address and price
                 parts = line.split(':', 1)[1].strip()  # Remove "🏠 Property 1:"
                 if ' - $' in parts:
@@ -146,6 +151,7 @@ def format_properties_from_business_logic(response_text: str) -> List[PropertyIn
             except:
                 current_property['address'] = "Unknown Address"
                 current_property['rent'] = 1500
+                current_property['property_number'] = "?"
         
         # Look for bedroom/bathroom info
         elif '🛏️' in line and 'bed' in line:
@@ -175,13 +181,19 @@ def format_properties_from_business_logic(response_text: str) -> List[PropertyIn
 
 def create_property_info(prop_data: dict) -> PropertyInfo:
     """Helper function to create PropertyInfo from parsed data"""
+    property_number = prop_data.get('property_number', '?')
+    address = prop_data.get('address', 'Unknown Address')
+    
+    # Add property number to the address display
+    display_address = f"Property {property_number}: {address}"
+    
     return PropertyInfo(
         id=str(uuid.uuid4()),
-        address=prop_data.get('address', 'Unknown Address'),
+        address=display_address,
         rent=prop_data.get('rent', 1500),
         bedrooms=prop_data.get('bedrooms', 2),
         bathrooms=prop_data.get('bathrooms', 1.0),
-        description=f"Great property at {prop_data.get('address', 'this location')}",
+        description=f"Great property at {address}",
         amenities=["Parking", "Laundry"],
         landlord={"name": "Property Manager", "email": "contact@property.com", "phone": "555-0199"}
     )
@@ -200,9 +212,15 @@ async def communicate_with_mcp_agent(message: str, conversation_id: str) -> MCPR
         # Parse properties from response
         properties = format_properties_from_business_logic(business_response)
         
+        # If we found properties, provide a clean message instead of the detailed text
+        if properties:
+            clean_message = f"I found {len(properties)} properties that match your request. You can favorite, tour, or contact any of these properties using the buttons below."
+        else:
+            clean_message = business_response
+        
         return MCPResponse(
             success=True,
-            message=business_response,
+            message=clean_message,
             properties=properties if properties else None
         )
         
