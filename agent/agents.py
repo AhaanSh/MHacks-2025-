@@ -72,11 +72,13 @@ async def understand_query(user_message: str) -> dict:
             "property_id": string or null,
             "reset": boolean or null,
             "property_action": {{
-              "action": one of ["get_contact", "sort", "compare", "details", "show_rent", null],
+              "action": one of ["get_contact", "sort", "compare", "details", "show_rent", "send_email", null],
               "property_number": number or null,
               "field": string or null,
               "order": one of ["asc", "desc", null],
-              "rental_mode": boolean or null
+              "rental_mode": boolean or null,
+              "subject": string or null,
+              "body": string or null
             }}
           }},
           "urgency": one of ["low", "medium", "high"]
@@ -91,6 +93,8 @@ async def understand_query(user_message: str) -> dict:
           {{"intent": "property_action", "key_info": {{"property_action": {{"action": "compare", "field": "bedrooms"}}}}}}
         - "show me rental properties in Austin" →
           {{"intent": "property_action", "key_info": {{"property_action": {{"action": "show_rent", "rental_mode": true}}}}}}
+        - "send an email to the realtor for property 2 saying I'd like to schedule a tour this week" →
+          {{"intent": "property_action", "key_info": {{"property_action": {{"action": "send_email", "property_number": 2, "subject": "Property Inquiry", "body": "I'd like to schedule a tour this week"}}}}}}
 
         User message: {user_message}
         """
@@ -120,6 +124,7 @@ async def understand_query(user_message: str) -> dict:
             "llm_analysis": {"error": str(e)},
             "timestamp": datetime.now(timezone.utc)
         }
+
 
 
 @chat_proto.on_message(ChatMessage)

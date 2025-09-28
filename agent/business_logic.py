@@ -123,6 +123,22 @@ def handle_property_action(sender: str, action_info: Dict[str, Any]) -> str:
             return f"Property {prop_num} not found."
         row = results[prop_num - 1]
         return format_property_details(row, prop_num, include_rent=rental_mode)
+    
+    elif action == "send_email":
+        prop_num = action_info.get("property_number")
+        subject = action_info.get("subject", "Inquiry about property")
+        body = action_info.get("body", "Hello, I am interested in this property. Please provide more details.")
+
+        results = user_last_search_results.get(sender, [])
+        if not results:
+            return "Please run a property search first to get a list of properties."
+
+        if prop_num is None or prop_num < 1 or prop_num > len(results):
+            return f"Property {prop_num} not found."
+
+        row = results[prop_num - 1]
+        from realtor import send_email_to_realtor
+        return send_email_to_realtor(row, subject, body)
 
     # Show rentals
     if action == "show_rent" or rental_mode:
