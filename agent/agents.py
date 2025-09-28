@@ -19,7 +19,7 @@ load_dotenv()
 # Import your custom business logic
 from business_logic import handle_user_query
 
-# Configure Gemini client (using google-generativeai)
+# Configure Gemini client
 genai.configure(api_key=os.getenv("API_KEY"))
 
 agent = Agent(
@@ -58,7 +58,9 @@ async def understand_query(user_message: str) -> dict:
             "budget_min": number or null,
             "budget_max": number or null,
             "bedrooms": number or null,
+            "bedroom_operator": one of [">=", "<=", ">", "<", "==", null],
             "bathrooms": number or null,
+            "bathroom_operator": one of [">=", "<=", ">", "<", "==", null],
             "location": string or null
           }},
           "urgency": one of ["low", "medium", "high"]
@@ -68,10 +70,9 @@ async def understand_query(user_message: str) -> dict:
         """
 
         resp = model.generate_content(prompt)
-
         llm_text = resp.text.strip()
 
-        # --- Cleaning step: remove ```json ... ``` if present ---
+        # Clean markdown fences if present
         if llm_text.startswith("```"):
             llm_text = llm_text.strip("`")
             if llm_text.lower().startswith("json"):
