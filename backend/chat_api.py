@@ -563,8 +563,14 @@ A Prospective Tenant
 
 P.S. I am also happy to provide references from previous landlords and can answer any questions you might have about my background and rental history."""
         
+        # Convert PropertyInfo to dictionary format expected by send_email_to_realtor
+        property_data = {
+            "agent_email": property_info.landlord.get("email", "contact@property.com"),
+            "formattedAddress": property_info.address
+        }
+        
         # Send the email
-        result = send_email_to_realtor(property_info, subject, custom_message)
+        result = send_email_to_realtor(property_data, subject, custom_message)
         
         if "✅" in result:
             return ActionResponse(

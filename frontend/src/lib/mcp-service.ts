@@ -57,10 +57,10 @@ export class MCPService {
    */
   static getConversationId(): string {
     if (typeof window === 'undefined') return this.generateConversationId();
-    
+
     const stored = sessionStorage.getItem('mcp_conversation_id');
     if (stored) return stored;
-    
+
     const newId = this.generateConversationId();
     sessionStorage.setItem('mcp_conversation_id', newId);
     return newId;
@@ -71,7 +71,7 @@ export class MCPService {
    */
   private static getDemoResponse(message: string): MCPResponse {
     const messageLower = message.toLowerCase();
-    
+
     const demoProperties: PropertyInfo[] = [
       {
         id: "demo_1",
@@ -86,7 +86,7 @@ export class MCPService {
       },
       {
         id: "demo_2",
-        address: "456 Pine Avenue, Midtown", 
+        address: "456 Pine Avenue, Midtown",
         rent: 2200,
         bedrooms: 3,
         bathrooms: 2.0,
@@ -123,7 +123,7 @@ export class MCPService {
    */
   static async sendMessage(message: string, conversationId?: string): Promise<MCPResponse> {
     const activeConversationId = conversationId || this.getConversationId();
-    
+
     try {
       // Add slight delay for demo "thinking" effect
       if (this.isDemoMode) {
@@ -152,24 +152,24 @@ export class MCPService {
       }
 
       const data: MCPResponse = await response.json();
-      
+
       // Store successful conversation ID
       if (typeof window !== 'undefined') {
         sessionStorage.setItem('mcp_conversation_id', activeConversationId);
       }
-      
+
       return data;
 
     } catch (error) {
       console.error('Error communicating with MCP agent:', error);
-      
+
       // Log the actual error for debugging
       console.error('Fetch error details:', {
         message: error instanceof Error ? error.message : 'Unknown error',
         url: `${this.BASE_URL}/api/chat`,
         error
       });
-      
+
       // Only fallback to demo responses if we're offline - remove demo mode fallback for testing
       if (!navigator.onLine) {
         return this.getDemoResponse(message);
@@ -216,7 +216,7 @@ export class MCPService {
    * Schedule a property tour
    */
   static async scheduleTour(
-    propertyId: string, 
+    propertyId: string,
     propertyAddress?: string,
     preferredDate?: string
   ): Promise<ActionResponse> {
@@ -226,7 +226,7 @@ export class MCPService {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           propertyId,
           propertyAddress,
           preferredDate: preferredDate || new Date().toISOString(),
@@ -253,7 +253,7 @@ export class MCPService {
    * Setup outreach to property landlord
    */
   static async setupOutreach(
-    propertyId: string, 
+    propertyId: string,
     propertyAddress?: string,
     customMessage?: string
   ): Promise<ActionResponse> {
@@ -263,10 +263,29 @@ export class MCPService {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           propertyId,
           propertyAddress,
-          customMessage: customMessage || "I'm interested in learning more about this property.",
+          customMessage: customMessage || `Hello,
+
+I hope this email finds you well. I am writing to express my strong interest in the property at ${propertyAddress || 'this location'}.
+
+This property appears to be exactly what I'm looking for, and I am genuinely excited about the possibility of making it my new home. I am a serious, qualified prospective tenant with excellent references and a stable income.
+
+I would love to:
+• Schedule a viewing at your earliest convenience
+• Learn more about the property's features and amenities
+• Discuss the application process and requirements
+• Understand the move-in timeline and any special considerations
+
+I am ready to move quickly on this opportunity and can provide all necessary documentation promptly. Please let me know your availability for a showing, and I will make every effort to accommodate your schedule.
+
+Thank you for your time and consideration. I look forward to hearing from you soon.
+
+Best regards,
+A Prospective Tenant
+
+P.S. I am also happy to provide references from previous landlords and can answer any questions you might have about my background and rental history.`,
         }),
       });
 
@@ -293,12 +312,12 @@ export class MCPService {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout for health check
-      
+
       const response = await fetch(`${this.BASE_URL}/api/health`, {
         method: 'GET',
         signal: controller.signal,
       });
-      
+
       clearTimeout(timeoutId);
       return response.ok;
     } catch (error) {
@@ -312,14 +331,14 @@ export class MCPService {
    */
   static async getConversationHistory(conversationId?: string): Promise<any[]> {
     const activeConversationId = conversationId || this.getConversationId();
-    
+
     try {
       const response = await fetch(`${this.BASE_URL}/api/conversations/${activeConversationId}`);
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      
+
       return await response.json();
     } catch (error) {
       console.error('Error fetching conversation history:', error);
