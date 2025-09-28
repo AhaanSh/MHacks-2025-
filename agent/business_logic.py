@@ -106,10 +106,15 @@ def handle_rental_query(original_message: str, llm_analysis: dict) -> str:
     response_lines = ["Here are some properties that match your request:\n"]
     for r in results:
         address = r.get("formattedAddress") or f"{r.get('city', 'Unknown')}, {r.get('state', '')}"
+        agent_name = r.get("agent_name", "Unknown Agent")
+        agent_phone = r.get("agent_phone", "No phone")
+        agent_email = r.get("agent_email", "No email")
+
         line = (
             f"- {address} "
             f"| ${r.get('price', 'N/A')} "
-            f"| {r.get('bedrooms', '?')} bed / {r.get('bathrooms', '?')} bath"
+            f"| {r.get('bedrooms', '?')} bed / {r.get('bathrooms', '?')} bath "
+            f"| Agent: {agent_name}, Phone: {agent_phone}, Email: {agent_email}"
         )
         response_lines.append(line)
 
