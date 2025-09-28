@@ -77,6 +77,53 @@ def parse_number(value: Any) -> Optional[float]:
     except Exception:
         return None
 
+def handle_property_action(sender: str, action_info: Dict[str, Any]) -> str:
+    if sender not in user_last_search_results:
+        return "Please run a property search first to get a list of properties."
+
+    results = user_last_search_results[sender]
+
+    action = action_info.get("action")
+    prop_num = action_info.get("property_number")
+    field = action_info.get("field")
+    order = action_info.get("order")
+
+    # Contact info lookup
+    if action == "get_contact":
+        if not prop_num or prop_num < 1 or prop_num > len(results):
+            return f"Property {prop_num} not found."
+        row = results[prop_num - 1]
+        contact = build_contact_info(row)
+        return f"Contact info for property {prop_num}: {contact or 'Not available'}"
+
+    # Sorting
+    if action == "sort":
+        if not field:
+            return "Please specify a field to sort by (e.g., price, bedrooms, bathrooms)."
+        df = pd.DataFrame(results)
+        if field not in df.columns:
+            return f"I can't sort by {field}. Available fields: {list(df.columns)}"
+        df_sorted = df.sort_values(by=field, ascending=(order != "desc"))
+        return _format_results(df_sorted, {}, sender, prefix=f"Properties sorted by {field} ({order or 'asc'})")
+
+    # Comparison (simple 2-property compare)
+    if action == "compare":
+        if not field:
+            return "Please specify what to compare (e.g., price, bedrooms, bathrooms)."
+        if len(results) < 2:
+            return "You need at least 2 properties in your results to compare."
+        row1, row2 = results[0], results[1]
+        val1, val2 = row1.get(field), row2.get(field)
+        return f"Property 1 has {val1} {field}, Property 2 has {val2} {field}."
+
+    # Details (dump full row)
+    if action == "details":
+        if not prop_num or prop_num < 1 or prop_num > len(results):
+            return f"Property {prop_num} not found."
+        row = results[prop_num - 1]
+        return f"Details for property {prop_num}: {row}"
+
+    return "Sorry, I didn’t understand the property action."
 
 def normalize_operator(op: Optional[str]) -> Optional[str]:
     if op is None:
@@ -495,8 +542,7 @@ def handle_user_query(sender: str, understood_query: Dict[str, Any]) -> str:
         else:
             return list_favorites(sender)
 
-    # Reset detection...
-
+    # Reset detection
     if _is_reset_command_text(original_message):
         user_context[sender] = {}
         return "Your search filters have been reset."
@@ -547,6 +593,12 @@ def handle_user_query(sender: str, understood_query: Dict[str, Any]) -> str:
         user_context[sender] = merged
         return _run_rental_query(sender, merged)
 
+    # Property actions (sorting, contact info, etc.)
+    if isinstance(llm_analysis, dict) and llm_analysis.get("intent") == "property_action":
+        key_info = llm_analysis.get("key_info", {}) or {}
+        action_info = key_info.get("property_action", {}) or {}
+        return handle_property_action(sender, action_info)
+
     # Other handlers
     msg_lower = original_message.lower()
     if any(k in msg_lower for k in ["price", "cost", "how much"]):
@@ -559,7 +611,6 @@ def handle_user_query(sender: str, understood_query: Dict[str, Any]) -> str:
         return handle_urgent_query(original_message, llm_analysis)
 
     return handle_general_query(original_message, llm_analysis)
-
 
 # ---------------- Rentals filtering ----------------
 def _run_rental_query(sender: str, filters: Dict[str, Any]) -> str:
@@ -629,8 +680,8 @@ def _format_results(df: pd.DataFrame, filters: Dict[str, Any], sender: str, pref
     """Enhanced results formatting with property IDs for easier favoriting"""
     results = df.head(5).to_dict(orient="records")
     
-    # Store the results for this user
-    user_last_search_results[sender] = results
+    # ✅ Store ALL displayed results for this user
+    user_last_search_results[sender] = results.copy()
     
     if show_favorite_option:
         lines = [f"{prefix} (Active filters: {summarize_filters(filters)}):\n"]
@@ -665,17 +716,16 @@ def _format_results(df: pd.DataFrame, filters: Dict[str, Any], sender: str, pref
         if contact:
             parts.append("| Contact: " + contact)
 
-        # Add favoriting instruction with simple number
         if show_favorite_option:
             parts.append(f"| Say 'favorite {i}' to save")
 
         lines.append(" ".join(parts))
 
-    # Add helpful instructions at the bottom
     if show_favorite_option:
         lines.append(f"\nTip: Use 'favorite 1', 'favorite 2', etc. to add properties to favorites, then 'show favorites' to view them later")
 
     return "\n".join(lines)
+
 
 
 # --- Other simple handlers ---
