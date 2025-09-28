@@ -147,6 +147,108 @@ def handle_property_action(sender: str, action_info: Dict[str, Any]) -> str:
 
     return "Sorry, I didn’t understand the property action."
 
+def _normalize_text_for_match(s: str) -> str:
+    if s is None:
+        return ""
+    s = str(s).lower().strip()
+    # remove punctuation and extra whitespace
+    s = re.sub(r"[-_\/]", " ", s)
+    s = re.sub(r"[^a-z0-9\s]", "", s)
+    s = re.sub(r"\s+", " ", s)
+    return s.strip()
+
+def resolve_property_type(df: pd.DataFrame, requested_type: str) -> Optional[str]:
+    """
+    Map a user-provided property type string to the best-matching
+    propertyType value present in the dataframe.
+
+    Returns the matched propertyType (original case) or None if no match.
+    """
+    if not requested_type or "propertyType" not in df.columns:
+        return None
+
+    req_norm = _normalize_text_for_match(requested_type)
+
+    # Build list of unique types present in the dataset
+    unique_types = [t for t in pd.Series(df["propertyType"].dropna().unique()).tolist() if t is not None]
+
+    # Normalized map for quick equality lookup
+    norm_map = {}
+    for t in unique_types:
+        norm = _normalize_text_for_match(t)
+        if norm:
+            norm_map.setdefault(norm, t)
+
+    # 1) Direct normalized equality
+    if req_norm in norm_map:
+        return norm_map[req_norm]
+
+    # 2) Substring match against original strings (user -> dataset)
+    for t in unique_types:
+        if req_norm and req_norm in str(t).lower():
+            return t
+
+    # 3) Substring match against normalized dataset strings (dataset -> user)
+    for norm, orig in norm_map.items():
+        if norm and (norm in req_norm or req_norm in norm):
+            return orig
+
+    # 4) Synonyms map (common user words -> canonical tokens)
+    SYNONYMS = {
+        "apartment": ["apartment", "apartments", "apt", "apts", "flat", "flats"],
+        "condo": ["condo", "condominium", "condos", "condominiums"],
+        "townhouse": ["townhouse", "townhomes", "townhome", "townhouses"],
+        "singlefamily": ["single family", "single-family", "singlefamily", "house", "houses", "home", "homes"],
+        "multifamily": ["multi family", "multi-family", "multifamily", "multi unit", "multi-units", "duplex", "triplex", "fourplex", "plex"]
+    }
+
+    # If user term clearly matches a synonym set, try to find dataset types that align
+    for canon, words in SYNONYMS.items():
+        for w in words:
+            if w in req_norm or req_norm in _normalize_text_for_match(w):
+                # Try to find a dataset entry that contains any of the synonyms or canonical token
+                for t in unique_types:
+                    tnorm = _normalize_text_for_match(t)
+                    if any(_normalize_text_for_match(x) in tnorm for x in (words + [canon])):
+                        return t
+
+    # 5) Special heuristics for "apartment": prefer Multi-Family or Condo if present
+    # (this covers the common case where dataset uses "Multi-Family" for apartment buildings)
+    apt_keywords = {"apartment", "apt", "flat", "apts", "apartments"}
+    if any(k in req_norm for k in apt_keywords):
+        # prefer Multi-Family if available
+        for t in unique_types:
+            tnorm = _normalize_text_for_match(t)
+            if "multi" in tnorm or "multi family" in tnorm or "multi-family" in tnorm:
+                return t
+        # then prefer Condo
+        for t in unique_types:
+            tnorm = _normalize_text_for_match(t)
+            if "condo" in tnorm or "condominium" in tnorm:
+                return t
+        # otherwise return the first dataset type that contains 'apt' / 'apartment'
+        for t in unique_types:
+            tnorm = _normalize_text_for_match(t)
+            if "apt" in tnorm or "apartment" in tnorm:
+                return t
+
+    # 6) Token-overlap heuristic (pick dataset type with most shared tokens)
+    req_tokens = set([tok for tok in re.split(r"\W+", req_norm) if tok])
+    best = None
+    best_score = 0
+    for t in unique_types:
+        tokens = set([tok for tok in re.split(r"\W+", _normalize_text_for_match(t)) if tok])
+        score = len(req_tokens & tokens)
+        if score > best_score:
+            best_score = score
+            best = t
+    if best_score > 0:
+        return best
+
+    # no match found
+    return None
+
+
 def format_property_details(row: Dict[str, Any], prop_num: int, include_rent: bool = False) -> str:
     """Return a nicely formatted details string for one property."""
     lines = [f"Details for property {prop_num}:"]
@@ -709,7 +811,18 @@ def _run_rental_query(sender: str, filters: Dict[str, Any]) -> str:
     df = apply_operator_filter(df, "bathrooms", filters.get("bathrooms"), filters.get("bathroom_operator"))
 
     if filters.get("property_type") and "propertyType" in df.columns:
-        df = df[df["propertyType"].astype(str).str.contains(str(filters["property_type"]), case=False, na=False)]
+        requested = str(filters.get("property_type", "")).strip()
+        resolved = resolve_property_type(df, requested)
+        # debug print (optional) - remove or comment out in production:
+        # print(f"DEBUG: requested property_type='{requested}' resolved_to='{resolved}'")
+        if resolved:
+            # match rows where the dataset propertyType contains the resolved value (case-insensitive)
+            df = df[df["propertyType"].astype(str).str.contains(str(resolved), case=False, na=False)]
+        else:
+            # fallback: try the original user-provided string (loose match)
+            df = df[df["propertyType"].astype(str).str.contains(requested, case=False, na=False)]
+
+
 
     if filters.get("city") and "city" in df.columns:
         df = df[df["city"].astype(str).str.contains(str(filters["city"]), case=False, na=False)]
@@ -735,7 +848,7 @@ def _run_rental_query(sender: str, filters: Dict[str, Any]) -> str:
                 df = df[cond]
 
     if df.empty:
-        return "Sorry, I couldn't find any properties matching those criteria. You might want to try adjusting your search requirements or exploring a different area."
+        return "Sorry, I couldn't find any properties matching your request. (Active filters: " + summarize_filters(filters) + ")"
 
     if "id" in df.columns:
         df = df.drop_duplicates(subset=["id"])
@@ -748,13 +861,10 @@ def _run_rental_query(sender: str, filters: Dict[str, Any]) -> str:
     return _format_results(df, filters, sender)
 
 
-def _format_results(df: pd.DataFrame, filters: Dict[str, Any], sender: str, prefix: str = "Here are some properties that match your request", show_favorite_option: bool = True) -> str:
-    """Enhanced results formatting with property IDs for easier favoriting"""
+def _format_results(df: pd.DataFrame, filters: Dict[str, Any], sender: str, prefix: str = "Here are some properties that match your request", show_favorite_option: bool = True, rental_mode: bool = False) -> str:
     results = df.head(5).to_dict(orient="records")
-    
-    # Store the results for this user
-    user_last_search_results[sender] = results
-    
+    user_last_search_results[sender] = results.copy()
+
     if show_favorite_option:
         lines = [f"{prefix} (Active filters: {summarize_filters(filters)}):\n"]
     else:
@@ -773,20 +883,14 @@ def _format_results(df: pd.DataFrame, filters: Dict[str, Any], sender: str, pref
         bathrooms_val = row.get("bathrooms")
         
         parts = [f"- Property {i}: {address}"]
-        if pd.notna(price_val):
-            parts.append(pretty_price(price_val))
+        if price_str:
+            parts.append(price_str)
 
         br_parts = []
         if pd.notna(bedrooms_val):
-            try:
-                br_parts.append(f"{int(bedrooms_val)} bed")
-            except Exception:
-                br_parts.append(f"{bedrooms_val} bed")
+            br_parts.append(f"{int(bedrooms_val)} bed")
         if pd.notna(bathrooms_val):
-            try:
-                br_parts.append(f"{int(bathrooms_val)} bath")
-            except Exception:
-                br_parts.append(f"{bathrooms_val} bath")
+            br_parts.append(f"{int(bathrooms_val)} bath")
         if br_parts:
             parts.append("| " + " / ".join(br_parts))
 
@@ -794,15 +898,13 @@ def _format_results(df: pd.DataFrame, filters: Dict[str, Any], sender: str, pref
         if contact:
             parts.append("| Contact: " + contact)
 
-        # Add favoriting instruction with simple number
         if show_favorite_option:
             parts.append(f"| Say 'favorite {i}' to save")
 
         lines.append(" ".join(parts))
 
-    # Add helpful instructions at the bottom
     if show_favorite_option:
-        lines.append(f"\nTip: Use 'favorite 1', 'favorite 2', etc. to add properties to favorites, then 'show favorites' to view them later")
+        lines.append("\nTip: Use 'favorite 1', 'favorite 2', etc. to add properties to favorites, then 'show favorites' to view them later")
 
     return "\n".join(lines)
 
