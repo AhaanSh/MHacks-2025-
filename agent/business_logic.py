@@ -78,8 +78,18 @@ def parse_number(value: Any) -> Optional[float]:
         return None
 
 def handle_property_action(sender: str, action_info: Dict[str, Any]) -> str:
-    if sender not in user_last_search_results:
-        return "Please run a property search first to get a list of properties."
+    # If no search results exist, do a basic search first
+    if sender not in user_last_search_results or not user_last_search_results[sender]:
+        # Initialize context if needed
+        if sender not in user_context:
+            user_context[sender] = {}
+        
+        # Do a basic search to populate results
+        basic_search_result = _run_rental_query(sender, {})
+        
+        # Check if we have results now
+        if sender not in user_last_search_results or not user_last_search_results[sender]:
+            return "I couldn't find any properties in the database. Please try a specific search query first."
 
     results = user_last_search_results[sender]
 
@@ -689,6 +699,55 @@ def handle_user_query(sender: str, understood_query: Dict[str, Any]) -> str:
     ]):
         return list_favorites(sender)
 
+    # Handle contact info requests directly
+    if any(phrase in lower_msg for phrase in [
+        "contact info for property", "contact information for property", "give me contact",
+        "contact details for property", "phone number for property", "email for property",
+        "landlord contact for property", "agent contact for property"
+    ]):
+        # Extract property number
+        import re
+        match = re.search(r'property\s+(\d+)', lower_msg)
+        if match:
+            prop_num = int(match.group(1))
+            action_info = {"action": "get_contact", "property_number": prop_num}
+            return handle_property_action(sender, action_info)
+        else:
+            return "Please specify which property number you want contact info for. For example: 'give me contact info for property 1'"
+
+    # Handle email requests directly
+    if any(phrase in lower_msg for phrase in [
+        "send an email", "email the", "send email", "email about property", "send message",
+        "email interest", "email of interest", "contact the landlord", "contact the agent",
+        "reach out about property", "inquire about property", "express interest"
+    ]):
+        # Extract property number
+        import re
+        match = re.search(r'property\s+(\d+)', lower_msg)
+        if match:
+            prop_num = int(match.group(1))
+            
+            # Extract custom message if provided
+            custom_message = None
+            if "saying" in lower_msg:
+                saying_part = lower_msg.split("saying", 1)[1].strip()
+                if saying_part:
+                    custom_message = saying_part
+            elif "about" in lower_msg and "property" not in lower_msg.split("about", 1)[1][:20]:
+                about_part = lower_msg.split("about", 1)[1].strip()
+                if about_part and "property" not in about_part[:20]:
+                    custom_message = about_part
+            
+            action_info = {
+                "action": "send_email", 
+                "property_number": prop_num,
+                "subject": "Property Inquiry - Interest Expression",
+                "body": custom_message or "Hello, I am interested in this property. Could you please provide more details and let me know about availability? I would also like to schedule a viewing if possible. Thank you!"
+            }
+            return handle_property_action(sender, action_info)
+        else:
+            return "Please specify which property number you want to email about. For example: 'send an email of interest to property 1'"
+
     # Handle LLM-detected favorites intent
     if isinstance(llm_analysis, dict) and llm_analysis.get("intent") == "favorites":
         key_info = llm_analysis.get("key_info", {}) or {}
@@ -928,6 +987,11 @@ def handle_urgent_query(original_message: str, llm_analysis: Dict[str, Any]) -> 
 
 
 def handle_general_query(original_message: str, llm_analysis: Dict[str, Any]) -> str:
+    # Check if user is asking for contact info
+    lower_msg = original_message.lower()
+    if any(term in lower_msg for term in ["contact", "phone", "email", "landlord", "agent", "owner"]):
+        return "To get contact information, please first search for properties and then ask for 'contact info for property 1' (or the specific property number). For example: 'show me apartments' then 'give me contact info for property 1'."
+    
     return "I'm here to help! Could you provide a bit more detail about what you're looking for? You can search for properties, view your favorites, or ask me anything else."
 
 

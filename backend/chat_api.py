@@ -214,6 +214,12 @@ async def communicate_with_mcp_agent(message: str, conversation_id: str) -> MCPR
         # Use the existing MCP agent functions directly
         understood_query = await understand_query(message)
         
+        # Add original query to the understood_query structure
+        if isinstance(understood_query, dict):
+            understood_query["original_query"] = message
+        else:
+            understood_query = {"llm_analysis": understood_query, "original_query": message}
+        
         # Call business logic
         business_response = handle_user_query(conversation_id, understood_query)
         
@@ -224,6 +230,7 @@ async def communicate_with_mcp_agent(message: str, conversation_id: str) -> MCPR
         if properties:
             clean_message = f"I found {len(properties)} properties that match your request. You can favorite, tour, or contact any of these properties using the buttons below."
         else:
+            # For non-property responses (like contact info), return the business response directly
             clean_message = business_response
         
         return MCPResponse(
