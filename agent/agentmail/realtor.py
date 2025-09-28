@@ -300,6 +300,11 @@ rentalagent@agentmail.to</p>
         try:
             logger.warning(f"Processing message from {message.from_email}")
             
+            # CRITICAL: Check if this is a message from ourselves to prevent loops
+            if self._is_self_message(message):
+                logger.warning(f"🚫 Ignoring self-message from {message.from_email} to prevent loops")
+                return True
+            
             # Check if we've already replied to this message to prevent duplicates
             if self._has_already_replied(message):
                 logger.warning(f"⚠️ Already replied to message {message.message_id}, skipping")
@@ -352,6 +357,48 @@ rentalagent@agentmail.to</p>
             logger.error(f"❌ Error processing message: {e}")
             return False
     
+    def _is_self_message(self, message: MessageData) -> bool:
+        """Check if this message is from ourselves to prevent reply loops"""
+        try:
+            from_email = message.from_email.lower().strip()
+            
+            # Check if the message is from our own email address
+            if from_email == "rentalagent@agentmail.to":
+                return True
+            
+            # Check if the message is from any of our known email addresses
+            our_emails = [
+                "rentalagent@agentmail.to",
+                "rentai@agentmail.to", 
+                "rental@agentmail.to"
+            ]
+            
+            for our_email in our_emails:
+                if our_email.lower() in from_email:
+                    return True
+            
+            # Check if the subject indicates it's an auto-reply from us
+            subject = message.subject.lower()
+            if any(indicator in subject for indicator in [
+                "re: rentai", "auto-reply", "automated response"
+            ]):
+                return True
+            
+            # Check if the content indicates it's from our system
+            content = message.text_content.lower()
+            if any(indicator in content for indicator in [
+                "this is an automated response from rentai",
+                "ai rental assistant",
+                "prospective tenant assistant"
+            ]):
+                return True
+            
+            return False
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Error checking if self-message: {e}")
+            return False
+
     def _has_already_replied(self, message: MessageData) -> bool:
         """Check if we've already replied to this message"""
         try:

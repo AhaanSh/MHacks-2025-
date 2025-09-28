@@ -23,6 +23,15 @@ load_dotenv(os.path.join(agent_path, '.env'))
 from business_logic import handle_user_query
 from agents import understand_query
 
+# Try to import email functionality
+try:
+    from realtor import send_email_to_realtor
+    EMAIL_AVAILABLE = True
+    print("✅ Email functionality available")
+except ImportError as e:
+    EMAIL_AVAILABLE = False
+    print(f"⚠️ Email functionality not available: {e}")
+
 # Pydantic models for API
 class ChatRequest(BaseModel):
     message: str
@@ -61,6 +70,9 @@ conversations: Dict[str, List[Dict]] = {}
 
 # In-memory property ID to address mapping
 property_id_to_address: Dict[str, str] = {}
+
+# In-memory property storage for each conversation
+conversation_properties: Dict[str, List[PropertyInfo]] = {}
 
 # Demo fallback responses
 DEMO_PROPERTIES = [
@@ -118,7 +130,7 @@ def get_demo_response(message: str) -> MCPResponse:
 def format_properties_from_business_logic(response_text: str) -> List[PropertyInfo]:
     """
     Parse the business logic response and extract property information
-    Updated to handle the new emoji-based format
+    Updated to handle the actual business logic format
     """
     properties = []
     
@@ -128,31 +140,77 @@ def format_properties_from_business_logic(response_text: str) -> List[PropertyIn
     for line in lines:
         line = line.strip()
         
-        # Look for property header line with house emoji
-        if line.startswith('🏠 Property'):
+        # Look for property lines that start with "- Property"
+        if line.startswith('- Property'):
             # If we have a current property, save it
             if current_property:
                 properties.append(create_property_info(current_property))
                 current_property = {}
             
-            # Parse: "🏠 Property 1: Address - $Price"
+            # Parse: "- Property 1: Address $Price | 3 bed / 2 bath | Contact: ..."
             try:
                 # Extract property number first
-                property_part = line.split(':', 1)[0]  # "🏠 Property 1"
+                property_part = line.split(':', 1)[0]  # "- Property 1"
                 property_number = property_part.split('Property')[1].strip()
                 current_property['property_number'] = property_number
                 
-                # Extract address and price
-                parts = line.split(':', 1)[1].strip()  # Remove "🏠 Property 1:"
-                if ' - $' in parts:
-                    address, price_str = parts.rsplit(' - $', 1)
-                    price_str = price_str.replace(',', '')
-                    current_property['address'] = address.strip()
-                    current_property['rent'] = int(price_str) if price_str.isdigit() else 1500
+                # Extract the rest of the line
+                rest = line.split(':', 1)[1].strip()  # Remove "- Property 1:"
+                
+                # Parse address and price
+                if '$' in rest:
+                    # Find the price part
+                    price_match = None
+                    for part in rest.split('|'):
+                        if '$' in part:
+                            price_part = part.strip()
+                            # Extract price from strings like "$390,000"
+                            import re
+                            price_match = re.search(r'\$([\d,]+)', price_part)
+                            if price_match:
+                                price_str = price_match.group(1).replace(',', '')
+                                current_property['rent'] = int(price_str) if price_str.isdigit() else 1500
+                                break
+                    
+                    if not price_match:
+                        current_property['rent'] = 1500
+                    
+                    # Extract address (everything before the first $)
+                    address_part = rest.split('$')[0].strip()
+                    current_property['address'] = address_part
                 else:
-                    current_property['address'] = parts.strip()
+                    current_property['address'] = rest
                     current_property['rent'] = 1500
-            except:
+                
+                # Parse bedrooms and bathrooms
+                if 'bed' in rest and 'bath' in rest:
+                    bed_match = re.search(r'(\d+)\s+bed', rest)
+                    bath_match = re.search(r'(\d+)\s+bath', rest)
+                    if bed_match:
+                        current_property['bedrooms'] = int(bed_match.group(1))
+                    if bath_match:
+                        current_property['bathrooms'] = int(bath_match.group(1))
+                
+                # Parse contact information
+                if 'Contact:' in rest:
+                    contact_part = rest.split('Contact:')[1].split('|')[0].strip()
+                    # Extract email from contact info
+                    email_match = re.search(r'([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})', contact_part)
+                    if email_match:
+                        current_property['landlord_email'] = email_match.group(1)
+                    
+                    # Extract phone number
+                    phone_match = re.search(r'(\d{10,})', contact_part)
+                    if phone_match:
+                        current_property['landlord_phone'] = phone_match.group(1)
+                    
+                    # Extract name (first part before phone/email)
+                    name_part = contact_part.split(',')[0].strip()
+                    if name_part and not name_part.isdigit():
+                        current_property['landlord_name'] = name_part
+                
+            except Exception as e:
+                print(f"Error parsing property line: {e}")
                 current_property['address'] = "Unknown Address"
                 current_property['rent'] = 1500
                 current_property['property_number'] = "?"
@@ -195,6 +253,15 @@ def create_property_info(prop_data: dict) -> PropertyInfo:
     property_id = str(uuid.uuid4())
     property_id_to_address[property_id] = display_address
     
+    # Create landlord info if available
+    landlord_info = None
+    if prop_data.get('landlord_email') or prop_data.get('landlord_name') or prop_data.get('landlord_phone'):
+        landlord_info = {
+            'name': prop_data.get('landlord_name', 'Unknown'),
+            'email': prop_data.get('landlord_email', 'contact@property.com'),
+            'phone': prop_data.get('landlord_phone', 'N/A')
+        }
+    
     return PropertyInfo(
         id=property_id,
         address=display_address,
@@ -203,14 +270,115 @@ def create_property_info(prop_data: dict) -> PropertyInfo:
         bathrooms=prop_data.get('bathrooms', 1.0),
         description=f"Great property at {address}",
         amenities=None,
-        landlord={"name": "Property Manager", "email": "contact@property.com", "phone": "555-0199"}
+        landlord=landlord_info or {"name": "Property Manager", "email": "contact@property.com", "phone": "555-0199"}
     )
+
+async def handle_email_request(message: str, conversation_id: str) -> MCPResponse:
+    """
+    Handle email requests specifically for the chat API
+    """
+    try:
+        # Extract property number from message
+        import re
+        match = re.search(r'property\s+(\d+)', message.lower())
+        if not match:
+            return MCPResponse(
+                success=False,
+                message="Please specify which property number you want to email about. For example: 'send an email of interest to property 1'"
+            )
+        
+        prop_num = int(match.group(1))
+        
+        # Get the stored properties for this conversation
+        if conversation_id in conversation_properties:
+            properties = conversation_properties[conversation_id]
+            if properties and 1 <= prop_num <= len(properties):
+                property_info = properties[prop_num - 1]
+                
+                # Extract custom message if provided
+                custom_message = None
+                if "saying" in message.lower():
+                    saying_part = message.lower().split("saying", 1)[1].strip()
+                    if saying_part:
+                        custom_message = saying_part
+                elif "about" in message.lower() and "property" not in message.lower().split("about", 1)[1][:20]:
+                    about_part = message.lower().split("about", 1)[1].strip()
+                    if about_part and "property" not in about_part[:20]:
+                        custom_message = about_part
+                
+                # Use the email functionality if available
+                if EMAIL_AVAILABLE:
+                    try:
+                        # Create property data structure for email function
+                        property_data = {
+                            "agent_email": property_info.landlord.get("email", "contact@property.com"),
+                            "formattedAddress": property_info.address
+                        }
+                        
+                        subject = f"Strong Interest in {property_info.address} - Ready to Move Forward"
+                        body = custom_message or f"""Hello,
+
+I hope this email finds you well. I am writing to express my strong interest in the property at {property_info.address}.
+
+This property appears to be exactly what I'm looking for, and I am genuinely excited about the possibility of making it my new home. I am a serious, qualified prospective tenant with excellent references and a stable income.
+
+I would love to:
+• Schedule a viewing at your earliest convenience
+• Learn more about the property's features and amenities
+• Discuss the application process and requirements
+• Understand the move-in timeline and any special considerations
+
+I am ready to move quickly on this opportunity and can provide all necessary documentation promptly. Please let me know your availability for a showing, and I will make every effort to accommodate your schedule.
+
+Thank you for your time and consideration. I look forward to hearing from you soon.
+
+Best regards,
+A Prospective Tenant
+
+P.S. I am also happy to provide references from previous landlords and can answer any questions you might have about my background and rental history."""
+                        
+                        email_result = send_email_to_realtor(property_data, subject, body)
+                        return MCPResponse(
+                            success=True,
+                            message=email_result
+                        )
+                    except Exception as e:
+                        return MCPResponse(
+                            success=False,
+                            message=f"⚠️ Failed to send email: {str(e)}"
+                        )
+                else:
+                    # Fallback when email is not available
+                    agent_email = property_info.landlord.get("email", "contact@property.com")
+                    return MCPResponse(
+                        success=False,
+                        message=f"📧 Email functionality temporarily unavailable. Please contact the agent directly at: {agent_email}"
+                    )
+        
+        return MCPResponse(
+            success=False,
+            message="Please search for properties first, then try sending an email about a specific property number."
+        )
+        
+    except Exception as e:
+        return MCPResponse(
+            success=False,
+            message=f"Error processing email request: {str(e)}"
+        )
 
 async def communicate_with_mcp_agent(message: str, conversation_id: str) -> MCPResponse:
     """
     Communicate with the MCP agent using the existing business logic
     """
     try:
+        # Check if this is an email request
+        if any(phrase in message.lower() for phrase in [
+            "send an email", "email the", "send email", "email about property", "send message",
+            "email interest", "email of interest", "contact the landlord", "contact the agent",
+            "reach out about property", "inquire about property", "express interest"
+        ]):
+            return await handle_email_request(message, conversation_id)
+        
         # Use the existing MCP agent functions directly
         understood_query = await understand_query(message)
         
@@ -226,8 +394,9 @@ async def communicate_with_mcp_agent(message: str, conversation_id: str) -> MCPR
         # Parse properties from response
         properties = format_properties_from_business_logic(business_response)
         
-        # If we found properties, provide a clean message instead of the detailed text
+        # Store properties for this conversation
         if properties:
+            conversation_properties[conversation_id] = properties
             clean_message = f"I found {len(properties)} properties that match your request. You can favorite, tour, or contact any of these properties using the buttons below."
         else:
             # For non-property responses (like contact info), return the business response directly

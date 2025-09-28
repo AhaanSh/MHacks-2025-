@@ -204,6 +204,11 @@ async def handle_message_received(event: WebhookEvent):
         message_data = extract_message_data_from_event(event)
         
         if message_data:
+            # CRITICAL: Check if this is a message from ourselves to prevent loops
+            if is_self_message_webhook(message_data):
+                logger.info(f"🚫 Ignoring self-message from {message_data.from_email} to prevent loops")
+                return
+            
             # Check if this is a test message (fake message ID) - process it anyway
             if (event.message_id.startswith("test_") or 
                 event.message_id.startswith("webhook_test_") or 
@@ -329,6 +334,48 @@ async def mark_message_as_replied(message_id: str, inbox_id: str):
         
     except Exception as e:
         logger.warning(f"⚠️ Could not mark message {message_id} as replied: {e}")
+
+def is_self_message_webhook(message_data: MessageData) -> bool:
+    """Check if this message is from ourselves to prevent reply loops"""
+    try:
+        from_email = message_data.from_email.lower().strip()
+        
+        # Check if the message is from our own email address
+        if from_email == "rentalagent@agentmail.to":
+            return True
+        
+        # Check if the message is from any of our known email addresses
+        our_emails = [
+            "rentalagent@agentmail.to",
+            "rentai@agentmail.to", 
+            "rental@agentmail.to"
+        ]
+        
+        for our_email in our_emails:
+            if our_email.lower() in from_email:
+                return True
+        
+        # Check if the subject indicates it's an auto-reply from us
+        subject = message_data.subject.lower()
+        if any(indicator in subject for indicator in [
+            "re: rentai", "auto-reply", "automated response"
+        ]):
+            return True
+        
+        # Check if the content indicates it's from our system
+        content = message_data.text_content.lower()
+        if any(indicator in content for indicator in [
+            "this is an automated response from rentai",
+            "ai rental assistant",
+            "prospective tenant assistant"
+        ]):
+            return True
+        
+        return False
+        
+    except Exception as e:
+        logger.warning(f"⚠️ Error checking if self-message: {e}")
+        return False
 
 def extract_message_data_from_event(event: WebhookEvent) -> Optional[MessageData]:
     """

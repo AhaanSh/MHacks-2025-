@@ -147,8 +147,15 @@ def handle_property_action(sender: str, action_info: Dict[str, Any]) -> str:
             return f"Property {prop_num} not found."
 
         row = results[prop_num - 1]
-        from realtor import send_email_to_realtor
-        return send_email_to_realtor(row, subject, body)
+        try:
+            from realtor import send_email_to_realtor
+            return send_email_to_realtor(row, subject, body)
+        except ImportError as e:
+            # AgentMail not available, return a helpful message
+            agent_email = row.get("agent_email", "No email available")
+            return f"📧 Email functionality temporarily unavailable. Please contact the agent directly at: {agent_email}"
+        except Exception as e:
+            return f"⚠️ Failed to send email: {str(e)}"
 
     # Show rentals
     if action == "show_rent" or rental_mode:
