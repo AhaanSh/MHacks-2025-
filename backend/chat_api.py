@@ -16,16 +16,18 @@ from dotenv import load_dotenv
 # Load environment variables from agent directory
 import sys
 import os
-agent_path = os.path.join(os.path.dirname(__file__), '..', 'agent')
-sys.path.append(agent_path)
+# Add the parent directory to path so we can import from agent folder
+parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, parent_dir)
+agent_path = os.path.join(parent_dir, 'agent')
 load_dotenv(os.path.join(agent_path, '.env'))
 
-from business_logic import handle_user_query
-from agents import understand_query
+from agent.business_logic import handle_user_query
+from agent.agents import understand_query
 
 # Try to import email functionality
 try:
-    from realtor import send_email_to_realtor
+    from agent.realtor import send_email_to_realtor
     EMAIL_AVAILABLE = True
     print("✅ Email functionality available")
 except ImportError as e:
@@ -605,4 +607,4 @@ async def get_conversation(conversation_id: str):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8001)

@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Import your custom business logic
-from business_logic import handle_user_query
+from .business_logic import handle_user_query
 
 # Configure Gemini client
 genai.configure(api_key=os.getenv("API_KEY"))

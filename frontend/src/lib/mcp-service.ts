@@ -41,7 +41,7 @@ interface ActionResponse {
 }
 
 export class MCPService {
-  private static BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'; //    'http://localhost:3001/api';
+  private static BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001'; //    'http://localhost:3001/api';
   private static timeout = 30000; // 30 second timeout
   private static isDemoMode = process.env.NODE_ENV === 'development';
 

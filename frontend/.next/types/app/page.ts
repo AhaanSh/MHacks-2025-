@@ -1,4 +1,4 @@
-// File: /Users/forest/eecs281/p2-stocks/MHacks-2025-/frontend/app/page.tsx
+// File: /Users/patricklu/MHacks-2025-/frontend/app/page.tsx
 import * as entry from '../../../app/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 
