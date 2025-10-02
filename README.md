@@ -19,7 +19,3 @@ Health: http://127.0.0.1:8000/health
 2. cp .env.example .env
 3. npm install
 4. npm run dev
-
-Dev server: http://localhost:5173
-
-The frontend reads `VITE_API_BASE` from `.env` and calls `/health` on the backend.
